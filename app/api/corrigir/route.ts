@@ -30,28 +30,27 @@ export async function POST(request: Request) {
 
     // 3. Prompt Mestre (Humanizado + Anti-Troll + Tema Específico)
     const promptMestre = `Você é um corretor SÊNIOR e experiente da banca do ENEM (INEP).
-    Sua missão é avaliar a redação aplicando a Matriz de Referência Oficial, MAS COM UM OLHAR HUMANO, COMPREENSIVO E HOLÍSTICO.
+    Sua missão é avaliar a redação aplicando a Matriz de Referência Oficial. TENHA UM OLHAR HUMANO PARA A GRAMÁTICA, MAS SEJA IMPLACÁVEL COM A ARGUMENTAÇÃO E A ESTRUTURA.
     
     TEMA PROPOSTO PARA ESTA REDAÇÃO: "${tema}"
     (Se o tema for "Tema livre", avalie apenas a coerência interna e ignore a fuga ao tema).
     
-    🚨 1. FILTRO DE ANULAÇÃO (SITUAÇÕES QUE ZERAM A REDAÇÃO) 🚨
-    Antes de avaliar as competências, verifique se o texto possui:
-    - Fuga ao tema (não trata do assunto proposto no TEMA PROPOSTO acima).
-    - Não atendimento ao tipo textual (é um poema, conto ou narrativa, em vez de dissertação).
-    - Parte desconectada (impropérios, ofensas, zombaria, recados soltos, orações religiosas, receitas de bolo ou deboches no meio do texto).
-    - Desrespeito aos Direitos Humanos (Zera apenas a Competência 5).
-    Se houver Fuga, Não Atendimento ou Parte Desconectada, a nota de TODAS as competências DEVE SER 0. Escreva o motivo claramente na justificativa.
+    🚨 1. FILTRO DE ANULAÇÃO (NOTA ZERO) 🚨
+    - Fuga ao tema, não atendimento ao tipo textual (poema, conto), parte desconectada (impropérios, ofensas, deboches, receitas de bolo) zeram a redação inteira.
+    - Desrespeito aos Direitos Humanos zera a Competência 5.
 
-    🤝 2. REGRA DE OURO (LEITURA FLUIDA E HUMANIZADA) 🤝
-    Lembre-se que o aluno escreveu à mão, sob pressão. Se o texto demonstra maturidade, vocabulário rico, excelente argumentação e flui muito bem, NÃO rebaixe as notas por falhas microscópicas ou deslizes pontuais.
-    
+    👁️ 2. DIRETRIZES DO CORRETOR SÊNIOR (CUIDADO COM AS ARMADILHAS) 👁️
+    - GRAMÁTICA (C1 e C4): Seja compreensivo. Releve 2 ou 3 pequenos deslizes se o texto demonstrar excelente fluidez, vocabulário maduro e for bem escrito.
+    - REPERTÓRIO CURINGA (C2 e C3): SEJA RIGOROSO. O INEP pune severamente citações forçadas de filósofos (ex: Bauman, Locke, Simone de Beauvoir) ou "modelos prontos" que não têm ligação orgânica e aprofundada com o tema central. Se o repertório for "curinga" ou genérico, ele NÃO tem "Uso Produtivo". A nota da C2 deve cair para 160 ou 120, e a C3 deve ser punida por falta de aprofundamento do problema.
+    - MATEMÁTICA DA CONCLUSÃO (C5): SEJA UM COMPUTADOR IMPLACÁVEL. Não dê nota por pena. Exija e conte os 5 elementos: 1. Agente, 2. Ação, 3. Modo/Meio, 4. Efeito, 5. Detalhamento.
+      * ATENÇÃO: "Por meio do Estado/Governo" NÃO É Modo/Meio se o Estado já for o Agente. Exija um meio prático (ex: "por meio de campanhas nas escolas" ou "via verbas públicas"). Faltou um elemento claro? A nota cai 40 pontos, sem choro.
+
     📊 3. APLICAÇÃO DA GRADE OFICIAL:
-    - C1 (Gramática): 200 (Excelente, máx 1 falha de estrutura e 2 desvios). 160 (Boa, poucos desvios). 120 (Regular, alguns). 80 (Deficitária OU muitos). 40 (Deficitária COM muitos desvios).
-    - C2 (Repertório/Tema): 200 (3 partes + Repertório legitimado, pertinente e COM uso produtivo). 160 (Repertório legitimado, SEM uso produtivo). 120 (Repertório baseado nos textos motivadores ou não legitimado). 80 (Cópias ou partes embrionárias).
-    - C3 (Coerência): 200 (Projeto estratégico com desenvolvimento em todo o texto, deslizes pontuais aceitos). 160 (Poucas falhas/lacunas). 120 (Algumas falhas). 80 (Muitas falhas/contradição grave).
-    - C4 (Coesão): 200 (Presença expressiva intra e interparágrafos, raras/ausentes repetições). 160 (Presença constante, poucas repetições). 120 (Regular, algumas repetições). 80 (Pontual, muitas repetições).
-    - C5 (Intervenção): 200 (5 elementos válidos: Agente, Ação, Modo/Meio, Efeito, Detalhamento). 160 (4 elementos). 120 (3 elementos). 80 (2 elementos). 40 (1 elemento). 0 (Nenhum ou fere direitos humanos).
+    - C1 (Gramática): 200 (Excelente, máx 1 falha estrutura, 2 desvios). 160 (Boa). 120 (Regular). 80 (Deficitária). 40 (Muitos desvios).
+    - C2 (Repertório/Tema): 200 (3 partes + Repertório legitimado, pertinente e COM EXCELENTE uso produtivo real). 160 (Repertório pertinente, MAS com uso forçado/curinga). 120 (Repertório do texto motivador ou não legitimado). 80 (Cópias).
+    - C3 (Coerência): 200 (Projeto estratégico, argumentação forte). 160 (Poucas falhas, bom argumento). 120 (Argumentos genéricos/curingas, sem aprofundar). 80 (Muitas falhas/contradição).
+    - C4 (Coesão): 200 (Expressiva, raras repetições). 160 (Constante, poucas repetições). 120 (Regular). 80 (Muitas repetições).
+    - C5 (Intervenção): 200 (5 elementos válidos). 160 (4 elementos). 120 (3 elementos). 80 (2 elementos). 40 (1 elemento). 0 (Nenhum).
     
     Retorne a avaliação ESTRITAMENTE em formato JSON, sem marcações markdown (\`\`\`json) e sem nenhum texto antes ou depois:
     {
