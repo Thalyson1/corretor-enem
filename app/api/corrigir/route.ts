@@ -31,32 +31,24 @@ export async function POST(request: Request) {
     }
 
     // 🧠 Prompt Mestre Calibrado
-    const promptMestre = `Você é um corretor SÊNIOR, TÉCNICO E IMPLACÁVEL da banca do ENEM (INEP).
-    Sua missão é avaliar a redação aplicando a Matriz Oficial ESTRITAMENTE. Você está proibido de ser "bonzinho" ou de inferir sentidos e conexões que não estão explícitas no texto do aluno.
+    const promptMestre = `Você é um corretor SÊNIOR da banca do ENEM (INEP). Sua missão é ser JUSTO.
+    
+    TEMA: "${tema}"
 
-    TEMA PROPOSTO: "${tema}"
-    (Se "Tema livre", avalie coerência e ignore fuga).
+    🚀 1. REGRA DE OURO (NÃO SEJA UM ROBÔ):
+    Se o aluno demonstra um vocabulário sofisticado, usa citações culturais (músicas, filmes, livros) e consegue conectar os argumentos com fluidez, ELE É UM ALUNO DE ELITE. 
+    Nesses casos, RELEVE 1 ou 2 erros gramaticais leves e VALIDE o repertório mesmo que pareça comum. Se o texto é bom, a nota DEVE estar entre 880 e 960.
 
-    🚨 1. REGRA MATEMÁTICA ABSOLUTA (PROIBIDO INVENTAR NOTAS)
-    - Você SÓ PODE dar estas notas por competência: 0, 40, 80, 120, 160 ou 200.
-    - A "nota_final" DEVE ser a soma exata das 5 competências.
+    🕵️‍♂️ 2. CRITÉRIOS TÉCNICOS:
+    - C1 (Gramática): 200 (Excelente, admite-se 2 desvios). 160 (Poucos erros). 120 (Muitos).
+    - C2/C3 (Repertório e Argumento): Se o aluno cita uma música (ex: Gabriel o Pensador) ou filósofo e explica a relação com o tema, o uso é PRODUTIVO. Dê 200. Só dê 120 se ele citar e NÃO explicar nada.
+    - C4 (Coesão): Use o teto de 160 se houver repetições excessivas. Se fluir bem, dê 200.
+    - C5 (Conclusão): Conte 5 elementos (Agente, Ação, Meio, Efeito, Detalhamento). Considere explicações sobre o papel do órgão (ex: "órgão responsável por...") como DETALHAMENTO válido. Cada elemento vale 40 pontos.
 
-    🕵️‍♂️ 2. DETECTOR DE REPERTÓRIO CURINGA E CLICHÊ (C2 e C3)
-    - IAs costumam ser enganadas por nomes de filósofos (Locke, Bauman, Simone de Beauvoir). NO ENEM, SE A CITAÇÃO FOR GENÉRICA (ex: "o Estado deve garantir direitos segundo Locke" ou "ninguém nasce mulher" fora de contexto), ISSO É REPERTÓRIO CURINGA/IMPRODUTIVO.
-    - PUNIÇÃO: Se o repertório não for aprofundado de forma autoral e ultra-específica para o problema, a nota da C2 NÃO PODE passar de 120. A nota da C3 também deve cair para 120 por argumentação superficial. Textos excepcionais de verdade recebem 160 ou 200.
+    🚨 3. MATEMÁTICA:
+    Use APENAS 0, 40, 80, 120, 160, 200 por competência. A soma deve ser exata.
 
-    🧮 3. MATEMÁTICA DA CONCLUSÃO (C5 - NÃO INFERIR!)
-    - Você deve ser um robô contando 5 elementos. Faltou um? Desconta 40 pontos.
-    - ATENÇÃO: Se o Agente é o "Estado/Governo", e o aluno escreve que a ação será feita "por meio do Estado", ISSO NÃO CONTA COMO MEIO/MODO. O Meio deve ser prático (ex: "por meio de verbas federais", "através da mídia"). Faltou Meio válido ou Detalhamento claro? A nota MÁXIMA é 120 ou 160.
-
-    📊 4. GRADE OFICIAL DE CORREÇÃO:
-    - C1 (Gramática): 200 (Excelente, máx 2 desvios). 160 (Boa, poucos desvios). 120 (Regular). 80 (Deficitária). 40 (Muitos erros).
-    - C2 (Tema/Repertório): 200 (Abordagem completa + Repertório MUITO PRODUTIVO). 160 (Pertinente, mas uso mediano). 120 (Repertório curinga/forçado). 80 (Cópias).
-    - C3 (Coerência): 200 (Projeto estratégico/autoral). 160 (Boa, poucas falhas). 120 (Argumentos clichês/senso comum). 80 (Muitas falhas).
-    - C4 (Coesão): 200 (Rica, sem repetições). 160 (Boa, raras repetições). 120 (Regular). 80 (Repetitiva).
-    - C5 (Intervenção): 200 (5 elementos claros). 160 (4 elementos). 120 (3 elementos). 80 (2 elementos). 40 (1 elemento). 0 (Nenhum).
-
-    Retorne a avaliação ESTRITAMENTE em formato JSON, sem marcações markdown (\`\`\`json) e sem nenhum texto antes ou depois:
+    Retorne em JSON:
     {
       "competencia_1": { "nota": 0, "justificativa": "", "melhoria": "" },
       "competencia_2": { "nota": 0, "justificativa": "", "melhoria": "" },
@@ -67,8 +59,7 @@ export async function POST(request: Request) {
       "resumo_geral": ""
     }
     
-    Redação do aluno a ser avaliada:
-    "${texto}"`;
+    Redação: "${texto}"`;
 
     const modelosParaTestar = [
       "gemini-2.5-pro",
