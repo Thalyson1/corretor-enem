@@ -37,26 +37,25 @@ export async function POST(request: Request) {
     TEMA PROPOSTO: "${tema}"
     (Se "Tema livre", avalie coerência interna e ignore fuga ao tema).
     
-    🚨 1. REGRA MATEMÁTICA ABSOLUTA (PROIBIDO INVENTAR NOTAS) 🚨
-    Para cada competência, você SÓ PODE escolher UM destes valores exatos: 0, 40, 80, 120, 160 ou 200.
-    É ESTRITAMENTE PROIBIDO dar notas como 50, 280, 440, etc. 
-    A sua "nota_final" DEVE ser OBRIGATORIAMENTE a soma matemática exata das 5 competências (máximo 1000).
+    🚨 1. REGRA MATEMÁTICA E ANTI-TROLL 🚨
+    - Notas permitidas por competência: APENAS 0, 40, 80, 120, 160 ou 200. Proibido inventar valores.
+    - A "nota_final" DEVE ser a soma exata das 5 competências.
+    - Fuga ao tema ou partes desconectadas (ofensas, receitas) zeram a redação inteira.
 
-    🚨 2. FILTRO DE ANULAÇÃO (NOTA ZERO)
-    - Fuga ao tema, não atendimento ao tipo textual, partes desconectadas (ofensas, receitas) zeram a redação inteira (todas as competências recebem 0).
-    - Desrespeito aos Direitos Humanos zera apenas a Competência 5.
+    🌟 2. REGRA DE OURO DA EXCELÊNCIA (TEXTOS 900+) 🌟
+    O INEP premia a excelência! NÃO TENHA MEDO DE DAR 200 PONTOS nas competências.
+    Se o aluno apresenta um texto com vocabulário rico, fluidez, argumentação madura e repertório sociocultural bem integrado e produtivo, ELE MERECE NOTAS ENTRE 160 E 200. 
+    Não procure "pêlo em ovo" para rebaixar um texto excelente para a casa dos 600 ou 700. Releve até 2 desvios gramaticais minúsculos na C1 se o texto for brilhante.
 
-    ⚖️ 3. CALIBRAGEM DA CORREÇÃO (O PONTO DE EQUILÍBRIO)
-    - GRAMÁTICA (C1 e C4): Seja rigoroso com erros estruturais. Textos com erros frequentes MERECEM 40 ou 80. Só dê 160 ou 200 se a escrita for madura e tiver no máximo 2 desvios.
-    - REPERTÓRIO "CURINGA" vs. REPERTÓRIO PRODUTIVO (C2 e C3): 
-      * Se citar filósofos de forma "solta/forçada", dê 120 na C2 e puna a C3.
-      * Se a citação faz sentido lógico e aprofunda o argumento, PREMIE com 160 ou 200.
-    - MATEMÁTICA DA CONCLUSÃO (C5): Exatamente 40 pontos por elemento (1. Agente, 2. Ação, 3. Modo/Meio, 4. Efeito, 5. Detalhamento). Faltou clareza? Não pontue.
+    ⚖️ 3. CALIBRAGEM JUSTA PARA TEXTOS FRACOS E MEDIANOS ⚖️
+    - GRAMÁTICA (C1): Textos com erros frequentes MERECEM 40, 80 ou 120.
+    - REPERTÓRIO FORÇADO (C2 e C3): Se citar filósofos de forma genérica ("curinga") sem aprofundar a relação com o tema, puna com 120.
+    - CONCLUSÃO (C5): Exatamente 40 pontos por elemento (1. Agente, 2. Ação, 3. Modo/Meio, 4. Efeito, 5. Detalhamento).
 
     📊 4. APLICAÇÃO DA GRADE OFICIAL:
     - C1 (Gramática): 200 (Excelente, máx 2 desvios). 160 (Boa). 120 (Regular). 80 (Deficitária). 40 (Muitos desvios).
     - C2 (Repertório/Tema): 200 (Abordagem completa + Repertório pertinente e PRODUTIVO). 160 (Pertinente, mas uso mediano). 120 (Forçado/curinga ou motivadores). 80 (Cópias).
-    - C3 (Coerência): 200 (Projeto estratégico). 160 (Boa argumentação). 120 (Argumentos genéricos/superficiais). 80 (Muitas falhas).
+    - C3 (Coerência): 200 (Projeto estratégico, argumentos fortes). 160 (Boa argumentação). 120 (Argumentos genéricos/superficiais). 80 (Muitas falhas).
     - C4 (Coesão): 200 (Rica, sem repetições). 160 (Boa, raras repetições). 120 (Regular). 80 (Muitas repetições).
     - C5 (Intervenção): 200 (5 elementos). 160 (4 elementos). 120 (3 elementos). 80 (2 elementos). 40 (1 elemento). 0 (Nenhum).
     
