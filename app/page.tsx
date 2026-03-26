@@ -1,65 +1,162 @@
-import Image from "next/image";
+'use client';
+import { useState } from 'react';
 
 export default function Home() {
+  const [redacao, setRedacao] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [resultado, setResultado] = useState<any>(null);
+
+  const corrigirRedacao = async () => {
+    if (!redacao.trim()) {
+      alert("Por favor, cole uma redação antes de enviar!");
+      return;
+    }
+
+    setLoading(true);
+    setResultado(null);
+
+    try {
+      const resposta = await fetch('/api/corrigir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto: redacao }),
+      });
+
+      const dados = await resposta.json();
+      setResultado(dados);
+    } catch (erro) {
+      console.error(erro);
+      alert("Ops! Ocorreu um erro ao conectar com a IA.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      {/* Header Institucional */}
+      <header className="bg-gradient-to-r from-slate-900 to-indigo-900 text-white py-12 px-4 sm:px-6 lg:px-8 shadow-md">
+        <div className="max-w-5xl mx-auto flex flex-col items-center text-center">
+          {/* Ícone de Capelo (Graduação) */}
+          <svg className="w-16 h-16 mb-4 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 14l9-5-9-5-9 5 9 5z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 14v7" />
+          </svg>
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
+            Corretor IA <span className="text-indigo-400">Padrão ENEM</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-4 text-lg text-indigo-100 max-w-2xl">
+            Plataforma avançada de avaliação textual. Cole sua redação abaixo e receba um diagnóstico detalhado com base nas diretrizes oficiais do INEP.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </header>
+
+      {/* Área de Avaliação */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-12">
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 md:p-8">
+          <div className="flex justify-between items-center mb-4">
+            <label htmlFor="redacao" className="block text-lg font-semibold text-slate-800">
+              Texto da Redação
+            </label>
+            <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+              Máx. 30 linhas recomendadas
+            </span>
+          </div>
+          
+          <textarea
+            id="redacao"
+            rows={14}
+            className="w-full p-5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-slate-700 leading-relaxed text-lg resize-y shadow-inner"
+            placeholder="Digite ou cole aqui a sua redação dissertativo-argumentativa..."
+            value={redacao}
+            onChange={(e) => setRedacao(e.target.value)}
+            disabled={loading}
+          ></textarea>
+
+          <button
+            onClick={corrigirRedacao}
+            disabled={loading}
+            className={`mt-6 w-full flex justify-center items-center gap-2 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-all text-lg ${
+              loading 
+                ? 'bg-indigo-400 cursor-not-allowed' 
+                : 'bg-indigo-600 hover:bg-indigo-700 hover:-translate-y-1 hover:shadow-indigo-200'
+            }`}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {loading ? (
+              <>
+                <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Processando Avaliação...
+              </>
+            ) : (
+              'Solicitar Correção Oficial'
+            )}
+          </button>
         </div>
-      </main>
-    </div>
+
+        {/* Boletim de Resultados */}
+        {resultado && resultado.nota_final !== undefined && (
+          <div className="mt-12 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-fade-in-up">
+            
+            {/* Cabeçalho do Boletim */}
+            <div className="bg-slate-50 border-b border-slate-200 p-8 text-center">
+              <h2 className="text-xl font-bold text-slate-500 uppercase tracking-widest mb-2">Nota Final</h2>
+              <div className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-900">
+                {resultado.nota_final}
+              </div>
+              <p className="mt-6 text-slate-700 text-lg leading-relaxed bg-white p-6 rounded-xl shadow-sm border border-slate-100 inline-block max-w-3xl text-left italic">
+                "{resultado.resumo_geral}"
+              </p>
+            </div>
+
+            {/* Detalhamento das Competências */}
+            <div className="p-8">
+              <h3 className="text-2xl font-bold text-slate-800 mb-6 border-b-2 border-slate-100 pb-2">
+                Detalhamento por Competência
+              </h3>
+              <div className="space-y-6">
+                {[1, 2, 3, 4, 5].map((num) => {
+                  const comp = resultado[`competencia_${num}`];
+                  if (!comp) return null;
+                  return (
+                    <div key={num} className="bg-slate-50 rounded-xl p-6 border-l-4 border-indigo-500 hover:shadow-md transition-shadow">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+                        <h4 className="text-lg font-bold text-slate-800">
+                          Competência {num}
+                        </h4>
+                        <span className="bg-indigo-100 text-indigo-800 py-1.5 px-4 rounded-full font-bold text-sm">
+                          {comp.nota} / 200 pts
+                        </span>
+                      </div>
+                      <div className="mb-4">
+                        <span className="font-semibold text-slate-700 block mb-1">Diagnóstico:</span>
+                        <span className="text-slate-600 leading-relaxed">{comp.justificativa}</span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-slate-200 flex items-start gap-3">
+                        <svg className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <span className="font-semibold text-slate-700 block mb-1">Como melhorar:</span>
+                          <span className="text-slate-600 text-sm">{comp.melhoria}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Rodapé do Boletim */}
+            <div className="bg-slate-900 text-slate-400 text-sm text-center py-4">
+              Avaliação gerada por Inteligência Artificial • {new Date().toLocaleDateString('pt-BR')}
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
