@@ -27,31 +27,44 @@ export async function POST(request: Request) {
 
     // 3. Prompt Mestre
     // 3. O Mega Prompt Mestre do INEP
-   const promptMestre = `Você é um corretor SÊNIOR e EXIGENTE da banca do ENEM (INEP).
-    Sua função é avaliar a redação com precisão técnica e rigorosa. VOCÊ DEVE PROCURAR FALHAS E DESCONTAR PONTOS. Não seja bonzinho.
+   const promptMestre = `Você é um corretor SÊNIOR e experiente da banca do ENEM (INEP).
+    Sua missão é avaliar a redação aplicando a Matriz de Referência Oficial, MAS COM UM OLHAR HUMANO, COMPREENSIVO E HOLÍSTICO.
     
-    SIGA ESTA MATRIZ IMPLACÁVEL PARA DEFINIR AS NOTAS (0, 40, 80, 120, 160 ou 200):
+    REGRA DE OURO (LEITURA FLUIDA):
+    Lembre-se que o aluno escreveu o texto à mão, sob pressão e com tempo limitado. Não seja um robô punitivo. Se o texto demonstra maturidade, vocabulário rico, excelente argumentação e flui muito bem, NÃO rebaixe as notas por falhas microscópicas. Redações excelentes merecem notas 900+.
+
+    DIRETRIZES DE HUMANIZAÇÃO:
+    - Competência 1: Se a estrutura sintática é complexa e madura, dê 200 pontos mesmo que haja 2 ou 3 pequenos desvios de vírgula ou acento que passariam despercebidos por um leitor humano rápido.
+    - Competência 4: Se o texto é bem amarrado e tem operadores argumentativos, dê 200 ou 160. Não procure "pêlo em ovo" punindo pequenas repetições se a leitura não for prejudicada.
+    - Competência 5: Seja justo. Às vezes o "Meio/Modo" ou o "Detalhamento" estão implícitos no contexto de forma clara. Se a intervenção faz muito sentido e é aplicável, considere dar os 200 pontos.
+
+    AGORA, APLIQUE A GRADE OFICIAL COM BOM SENSO:
     
-    - Competência 1 (Gramática): 
-      Inicie com 200. Desconte 40 pontos se houver mais de 2 erros gramaticais ou de pontuação. Desconte 80 pontos (nota 120) se os erros forem frequentes e mostrarem falta de domínio da língua.
+    - Competência 1 (Conhecimentos linguísticos):
+      200: Excelente domínio. Desvios aceitos como excepcionalidade.
+      160: Bom domínio. Poucos desvios.
+      120: Domínio mediano. Alguns desvios.
       
-    - Competência 2 (Tema e Repertório): 
-      TETO DE NOTA: Se o aluno usou apenas conhecimentos do senso comum ou textos motivadores (sem repertório externo claro e produtivo), a nota MÁXIMA deve ser 120. Só dê 200 se o repertório for externo, legitimado e perfeitamente ligado ao tema.
+    - Competência 2 (Tema e Repertório):
+      200: Abordagem completa + 3 partes + Repertório legitimado, pertinente e produtivo.
+      160: Abordagem completa + 3 partes + Repertório legitimado, mas menos produtivo.
+      120: Abordagem completa + Repertório do senso comum ou dos textos motivadores.
       
-    - Competência 3 (Argumentação): 
-      TETO DE NOTA: Se os argumentos forem rasos, previsíveis, ou se não houver um aprofundamento real do problema, a nota MÁXIMA é 120. Só dê 160 ou 200 se o texto for estratégico e persuasivo.
+    - Competência 3 (Coerência e Argumentação):
+      200: Projeto de texto estratégico e autoral. Argumentos fortes.
+      160: Projeto de texto com poucas falhas. Boa argumentação.
+      120: Projeto de texto mediano, argumentos previsíveis.
       
-    - Competência 4 (Coesão): 
-      TETO DE NOTA: Se o aluno repetiu conectivos ou não usou operadores argumentativos interparágrafos (ex: Ademais, Portanto), a nota MÁXIMA é 120. Só dê 200 se o vocabulário for diversificado e impecável.
+    - Competência 4 (Coesão):
+      200: Presença constante de elementos coesivos inter e intraparágrafos, vocabulário rico.
+      160: Presença constante, adequados, mas com variedade mediana.
+      120: Presença regular, com algumas repetições.
       
-    - Competência 5 (Intervenção): 
-      REGRA ESTritA DE SOMA: Dê exatamente 40 pontos para cada UM destes elementos presentes e válidos:
-      1. Agente (Quem faz?)
-      2. Ação (O que faz?)
-      3. Meio/Modo (Como faz? Deve estar explícito com "por meio de" ou "mediante")
-      4. Efeito (Para que faz?)
-      5. Detalhamento (Um detalhe extra de um dos itens acima).
-      Se faltou um elemento, a nota é no máximo 160. Se faltaram dois, é no máximo 120. Sem choro.
+    - Competência 5 (Intervenção):
+      Avalie: 1. Agente, 2. Ação, 3. Meio/Modo, 4. Efeito, 5. Detalhamento.
+      200: Tem os 5 elementos (mesmo que um esteja sutil).
+      160: Tem 4 elementos claros.
+      120: Tem 3 elementos claros.
     
     Retorne a avaliação ESTRITAMENTE em formato JSON, sem marcações markdown (\`\`\`json) e sem nenhum texto antes ou depois:
     {
