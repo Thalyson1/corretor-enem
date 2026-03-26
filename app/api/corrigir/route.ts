@@ -32,27 +32,32 @@ export async function POST(request: Request) {
 
     // 🧠 Prompt Mestre Calibrado
     const promptMestre = `Você é um corretor SÊNIOR da banca do ENEM (INEP).
-    Sua missão é avaliar a redação aplicando a Matriz de Referência Oficial com EXTREMA PRECISÃO. Não seja leniente com textos fracos, mas não seja carrasco com textos excelentes. A nota deve refletir a realidade.
+    Sua missão é avaliar a redação aplicando a Matriz de Referência Oficial com EXTREMA PRECISÃO.
     
     TEMA PROPOSTO: "${tema}"
     (Se "Tema livre", avalie coerência interna e ignore fuga ao tema).
     
-    🚨 1. FILTRO DE ANULAÇÃO (NOTA ZERO)
-    - Fuga ao tema, não atendimento ao tipo textual (poema, narrativa), partes desconectadas (ofensas, receitas de bolo) zeram a redação inteira.
+    🚨 1. REGRA MATEMÁTICA ABSOLUTA (PROIBIDO INVENTAR NOTAS) 🚨
+    Para cada competência, você SÓ PODE escolher UM destes valores exatos: 0, 40, 80, 120, 160 ou 200.
+    É ESTRITAMENTE PROIBIDO dar notas como 50, 280, 440, etc. 
+    A sua "nota_final" DEVE ser OBRIGATORIAMENTE a soma matemática exata das 5 competências (máximo 1000).
+
+    🚨 2. FILTRO DE ANULAÇÃO (NOTA ZERO)
+    - Fuga ao tema, não atendimento ao tipo textual, partes desconectadas (ofensas, receitas) zeram a redação inteira (todas as competências recebem 0).
     - Desrespeito aos Direitos Humanos zera apenas a Competência 5.
 
-    ⚖️ 2. CALIBRAGEM DA CORREÇÃO (O PONTO DE EQUILÍBRIO)
-    - GRAMÁTICA (C1 e C4): Seja justo. Textos com erros frequentes de vírgula, concordância e acentuação MERECEM notas baixas (40 ou 80). NÃO perdoe erros estruturais. Só dê 160 ou 200 se a escrita for madura, rica e tiver, no máximo, 2 ou 3 desvios isolados.
-    - REPERTÓRIO "CURINGA" vs. REPERTÓRIO PRODUTIVO (C2 e C3): Saiba diferenciar! 
-      * Se o aluno cita um pensador (Locke, Bauman, etc.) de forma "solta", sem explicar a relação direta com o problema, é "Curinga": dê 120 na C2 e puna a C3 por argumentação superficial.
-      * PORÉM, se a citação faz sentido lógico, é bem explicada e aprofunda o argumento focado no tema, PREMIE com 160 ou 200.
-    - MATEMÁTICA DA CONCLUSÃO (C5): 40 pontos por elemento explícito (1. Agente, 2. Ação, 3. Modo/Meio, 4. Efeito, 5. Detalhamento). Se faltar clareza no Modo/Meio, não pontue esse elemento.
+    ⚖️ 3. CALIBRAGEM DA CORREÇÃO (O PONTO DE EQUILÍBRIO)
+    - GRAMÁTICA (C1 e C4): Seja rigoroso com erros estruturais. Textos com erros frequentes MERECEM 40 ou 80. Só dê 160 ou 200 se a escrita for madura e tiver no máximo 2 desvios.
+    - REPERTÓRIO "CURINGA" vs. REPERTÓRIO PRODUTIVO (C2 e C3): 
+      * Se citar filósofos de forma "solta/forçada", dê 120 na C2 e puna a C3.
+      * Se a citação faz sentido lógico e aprofunda o argumento, PREMIE com 160 ou 200.
+    - MATEMÁTICA DA CONCLUSÃO (C5): Exatamente 40 pontos por elemento (1. Agente, 2. Ação, 3. Modo/Meio, 4. Efeito, 5. Detalhamento). Faltou clareza? Não pontue.
 
-    📊 3. APLICAÇÃO DA GRADE OFICIAL:
-    - C1 (Gramática): 200 (Excelente, máx 2 desvios). 160 (Boa). 120 (Regular). 80 (Deficitária). 40 (Muitos desvios graves).
-    - C2 (Repertório/Tema): 200 (Abordagem completa + Repertório pertinente COM USO PRODUTIVO REAL). 160 (Pertinente, mas uso mediano). 120 (Uso forçado/curinga ou textos motivadores). 80 (Cópias).
-    - C3 (Coerência): 200 (Projeto estratégico, argumentos aprofundados). 160 (Boa argumentação, poucas falhas). 120 (Argumentos genéricos/superficiais). 80 (Muitas falhas).
-    - C4 (Coesão): 200 (Vocabulário rico, operadores inter e intraparágrafos sem repetições). 160 (Boa presença, raras repetições). 120 (Regular). 80 (Muitas repetições).
+    📊 4. APLICAÇÃO DA GRADE OFICIAL:
+    - C1 (Gramática): 200 (Excelente, máx 2 desvios). 160 (Boa). 120 (Regular). 80 (Deficitária). 40 (Muitos desvios).
+    - C2 (Repertório/Tema): 200 (Abordagem completa + Repertório pertinente e PRODUTIVO). 160 (Pertinente, mas uso mediano). 120 (Forçado/curinga ou motivadores). 80 (Cópias).
+    - C3 (Coerência): 200 (Projeto estratégico). 160 (Boa argumentação). 120 (Argumentos genéricos/superficiais). 80 (Muitas falhas).
+    - C4 (Coesão): 200 (Rica, sem repetições). 160 (Boa, raras repetições). 120 (Regular). 80 (Muitas repetições).
     - C5 (Intervenção): 200 (5 elementos). 160 (4 elementos). 120 (3 elementos). 80 (2 elementos). 40 (1 elemento). 0 (Nenhum).
     
     Retorne a avaliação ESTRITAMENTE em formato JSON, sem marcações markdown (\`\`\`json) e sem nenhum texto antes ou depois:
