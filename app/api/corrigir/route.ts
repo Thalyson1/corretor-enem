@@ -5,50 +5,58 @@ export async function POST(request: Request) {
   try {
     const { texto, tema } = await request.json();
 
-    // 🛑 FILTRO DE TAMANHO (Regra das 7 linhas do ENEM)
+    // 1. REGRA DAS 7 LINHAS (Filtro Anti-Zueira)
     const numeroDePalavras = texto.trim().split(/\s+/).length;
     if (numeroDePalavras < 70) {
       return NextResponse.json({
-        competencia_1: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
+        competencia_1: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "Escreva pelo menos 70 palavras para que sua redação possa ser avaliada." },
         competencia_2: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
         competencia_3: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
         competencia_4: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
         competencia_5: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
         nota_final: 0,
-        resumo_geral: "🛑 TEXTO INSUFICIENTE: De acordo com as regras oficiais do ENEM, redações com até 7 linhas recebem nota zero."
+        resumo_geral: "🛑 REDAÇÃO ANULADA: O texto apresenta menos de 7 linhas (mínimo de 70 palavras estimadas), o que configura insuficiência de texto segundo os critérios do INEP."
       });
     }
 
-    // 🔑 O CHAVEIRO MÁGICO (Pega todas as chaves cadastradas no Vercel)
+    // 2. CHAVEIRO MÁGICO (Alterna entre suas chaves de API do Vercel)
     const chavesDisponiveis = [
       process.env.GEMINI_API_KEY,
       process.env.GEMINI_API_KEY_2,
-      process.env.GEMINI_API_KEY_3 // Se quiser adicionar mais depois, o código já está pronto!
-    ].filter(Boolean); // O filter(Boolean) remove as chaves que estiverem vazias
+      process.env.GEMINI_API_KEY_3
+    ].filter(Boolean);
 
     if (chavesDisponiveis.length === 0) {
-      throw new Error("Nenhuma chave de API configurada.");
+      throw new Error("Nenhuma chave de API configurada no Vercel.");
     }
 
-    // 🧠 Prompt Mestre Calibrado
-    const promptMestre = `Você é um corretor SÊNIOR da banca do ENEM (INEP). Sua missão é ser JUSTO.
+    // 3. PROMPT SNIPER 3.0 (Calibrado para Redações 900+ e Rigoroso com 500)
+    const promptMestre = `Você é um corretor SÊNIOR da banca do ENEM (INEP). Sua missão é ser JUSTO E IMPARCIAL.
     
-    TEMA: "${tema}"
+    TEMA DA REDAÇÃO: "${tema}"
 
-    🚀 1. REGRA DE OURO (NÃO SEJA UM ROBÔ):
-    Se o aluno demonstra um vocabulário sofisticado, usa citações culturais (músicas, filmes, livros) e consegue conectar os argumentos com fluidez, ELE É UM ALUNO DE ELITE. 
-    Nesses casos, RELEVE 1 ou 2 erros gramaticais leves e VALIDE o repertório mesmo que pareça comum. Se o texto é bom, a nota DEVE estar entre 880 e 960.
+    🚀 1. REGRA DE OURO (VALORIZAÇÃO DA ELITE):
+    Se o aluno demonstra vocabulário sofisticado (ex: "heurística", "inadmissível", "perdurar"), usa citações culturais (músicas, filmes, livros) e conecta argumentos com fluidez, ELE É UM ALUNO DE ELITE. 
+    Nesses casos, RELEVE até 2 desvios gramaticais leves na C1 e VALIDE o repertório (C2) como PRODUTIVO se houver conexão lógica. Se o texto é de alto nível, a nota final DEVE refletir isso (880 a 960).
 
-    🕵️‍♂️ 2. CRITÉRIOS TÉCNICOS:
-    - C1 (Gramática): 200 (Excelente, admite-se 2 desvios). 160 (Poucos erros). 120 (Muitos).
-    - C2/C3 (Repertório e Argumento): Se o aluno cita uma música (ex: Gabriel o Pensador) ou filósofo e explica a relação com o tema, o uso é PRODUTIVO. Dê 200. Só dê 120 se ele citar e NÃO explicar nada.
-    - C4 (Coesão): Use o teto de 160 se houver repetições excessivas. Se fluir bem, dê 200.
-    - C5 (Conclusão): Conte 5 elementos (Agente, Ação, Meio, Efeito, Detalhamento). Considere explicações sobre o papel do órgão (ex: "órgão responsável por...") como DETALHAMENTO válido. Cada elemento vale 40 pontos.
+    🕵️‍♂️ 2. DETECTOR DE REPERTÓRIO CURINGA (C2 e C3):
+    - Se a citação (Locke, Bauman, etc.) for "jogada" sem explicação, é CURINGA: nota 120.
+    - Se a citação (como Gabriel o Pensador ou Hans Jonas) for explicada e amarrada ao tema, é PRODUTIVO: nota 200.
 
-    🚨 3. MATEMÁTICA:
-    Use APENAS 0, 40, 80, 120, 160, 200 por competência. A soma deve ser exata.
+    🧮 3. MATEMÁTICA DA CONCLUSÃO (C5):
+    - Conte 5 elementos: Agente, Ação, Meio/Modo, Efeito e Detalhamento. 
+    - Cada elemento vale 40 pontos. 
+    - Considere explicações sobre o papel do órgão (ex: "órgão responsável por elaborar leis") como DETALHAMENTO válido.
 
-    Retorne em JSON:
+    📊 4. GRADE OFICIAL (NOTAS PERMITIDAS: 0, 40, 80, 120, 160, 200):
+    - C1 (Gramática): 200 (Excelente). 160 (Boa). 120 (Muitos erros).
+    - C2 (Repertório): 200 (Produtivo). 160 (Pertinente). 120 (Curinga/Superficial).
+    - C3 (Coerência): 200 (Projeto autoral). 160 (Boa argumentação). 120 (Senso comum).
+    - C4 (Coesão): 200 (Sem repetições, uso de conectivos). 160 (Raras repetições). 120 (Regular).
+    - C5 (Intervenção): 40 pts por elemento identificado.
+
+    IMPORTANTE: A nota_final deve ser a soma exata das 5 competências.
+    Retorne ESTRITAMENTE um objeto JSON puro, sem textos extras:
     {
       "competencia_1": { "nota": 0, "justificativa": "", "melhoria": "" },
       "competencia_2": { "nota": 0, "justificativa": "", "melhoria": "" },
@@ -59,54 +67,47 @@ export async function POST(request: Request) {
       "resumo_geral": ""
     }
     
-    Redação: "${texto}"`;
+    REDAÇÃO PARA AVALIAR: "${texto}"`;
 
-    const modelosParaTestar = [
-      "gemini-2.5-pro",
-      "gemini-2.5-flash", 
-      "gemini-2.0-flash",
-    ];
+    // 4. ROLETA DE MODELOS (Apenas os Gênios)
+    const modelosParaTestar = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
     
-    let jsonText = "";
-    let avaliacaoConcluida = false;
+    let rawResponse = "";
+    let sucesso = false;
 
-    // 🔄 O SUPER LOOP (Tenta Chave 1. Se falhar, tenta Chave 2...)
-    for (let i = 0; i < chavesDisponiveis.length; i++) {
-      if (avaliacaoConcluida) break; // Se já conseguiu a nota, para tudo.
-      
-      const genAI = new GoogleGenerativeAI(chavesDisponiveis[i] as string);
-      console.log(`🔑 Testando com a Chave de API número ${i + 1}...`);
+    // Loop pelas Chaves e depois pelos Modelos
+    for (const key of chavesDisponiveis) {
+      if (sucesso) break;
+      const genAI = new GoogleGenerativeAI(key as string);
 
-      for (const nomeDoModelo of modelosParaTestar) {
+      for (const modelName of modelosParaTestar) {
         try {
-          console.log(`⏳ Tentando o modelo: ${nomeDoModelo}...`);
-          const model = genAI.getGenerativeModel({ 
-            model: nomeDoModelo,
-            generationConfig: { temperature: 0.7 }
-          });
-
+          const model = genAI.getGenerativeModel({ model: modelName });
           const result = await model.generateContent(promptMestre);
-          const response = await result.response;
-          jsonText = response.text();
-          
-          avaliacaoConcluida = true;
-          console.log(`✅ SUCESSO! Avaliado com Chave ${i + 1} e Modelo ${nomeDoModelo}`);
-          break; // Sai do loop de modelos
-        } catch (erroDeModelo) {
-          console.error(`❌ Falha no modelo ${nomeDoModelo} com a Chave ${i + 1}.`);
+          rawResponse = result.response.text();
+          sucesso = true;
+          break;
+        } catch (err) {
+          console.error(`Falha no modelo ${modelName} com uma das chaves.`);
         }
       }
     }
 
-    if (!avaliacaoConcluida) {
-      throw new Error("Todas as chaves e modelos atingiram o limite ou falharam.");
-    }
+    if (!sucesso) throw new Error("Limite de API excedido em todas as chaves.");
 
-    jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
-    return NextResponse.json(JSON.parse(jsonText));
+    // 5. LIMPEZA DE SEGURANÇA DO JSON (Onde o erro de 'C' é resolvido)
+    const startIdx = rawResponse.indexOf('{');
+    const endIdx = rawResponse.lastIndexOf('}') + 1;
+    const jsonString = rawResponse.substring(startIdx, endIdx);
+
+    const avaliacao = JSON.parse(jsonString);
+    return NextResponse.json(avaliacao);
 
   } catch (error) {
-    console.error("Erro geral na API:", error);
-    return NextResponse.json({ error: 'Erro ao corrigir a redação.' }, { status: 500 });
+    console.error("Erro na API de Correção:", error);
+    return NextResponse.json(
+      { error: "Ocorreu um erro ao processar sua nota. Tente novamente em 2 minutos." },
+      { status: 500 }
+    );
   }
 }
