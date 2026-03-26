@@ -1,37 +1,61 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 export default function Home() {
   const [tema, setTema] = useState('');
   const [redacao, setRedacao] = useState('');
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<any>(null);
+  
+  // NOVO: Estado para controlar as mensagens de aviso na tela
+  const [aviso, setAviso] = useState<{ tipo: 'sucesso' | 'erro', texto: string } | null>(null);
+  
+  // NOVO: Referência para fazer a tela rolar sozinha para o boletim
+  const boletimRef = useRef<HTMLDivElement>(null);
 
   const corrigirRedacao = async () => {
     if (!redacao.trim()) {
-      alert("Por favor, cole uma redação antes de enviar!");
+      setAviso({ tipo: 'erro', texto: '⚠️ Por favor, cole uma redação antes de solicitar a correção!' });
       return;
     }
 
     setLoading(true);
     setResultado(null);
+    setAviso(null); // Limpa avisos anteriores ao tentar de novo
 
     try {
       const resposta = await fetch('/api/corrigir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Agora enviamos o tema e a redação para o backend
         body: JSON.stringify({ 
           texto: redacao,
           tema: tema.trim() === '' ? 'Tema livre' : tema 
         }),
       });
 
+      // Se a API der erro (como o 500 do limite de chaves)
+      if (!resposta.ok) {
+        throw new Error("Erro de conexão ou limite atingido.");
+      }
+
       const dados = await resposta.json();
       setResultado(dados);
+      
+      // Mensagem de sucesso!
+      setAviso({ tipo: 'sucesso', texto: '✅ Avaliação concluída com sucesso! Role a página para ver seu boletim detalhado.' });
+
+      // Bônus: Faz a tela rolar suavemente para o boletim após meio segundo
+      setTimeout(() => {
+        boletimRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 500);
+
     } catch (erro) {
       console.error(erro);
-      alert("Ops! Ocorreu um erro ao conectar com a IA.");
+      // Mensagem de Erro/Limite Excedido bonitinha para o usuário
+      setAviso({ 
+        tipo: 'erro', 
+        texto: '⏳ Ufa! Nosso sistema está analisando muitas redações neste exato momento e pediu uma pausa. Por favor, aguarde de 2 a 3 minutinhos e clique em avaliar novamente!' 
+      });
     } finally {
       setLoading(false);
     }
@@ -58,7 +82,6 @@ export default function Home() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-12">
         <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 md:p-8">
           
-          {/* NOVO CAMPO: Tema da Redação */}
           <div className="mb-6">
             <label htmlFor="tema" className="block text-lg font-semibold text-slate-800 mb-2">
               Qual é o tema da redação? (Opcional)
@@ -104,56 +127,69 @@ export default function Home() {
           >
             {loading ? 'Processando Avaliação...' : 'Solicitar Correção Oficial'}
           </button>
+
+          {/* NOVO: CAIXA DE AVISOS (Renderiza se houver erro ou sucesso) */}
+          {aviso && (
+            <div className={`mt-6 p-4 rounded-xl font-medium text-lg text-center animate-fade-in-up border ${
+              aviso.tipo === 'sucesso' 
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                : 'bg-amber-50 text-amber-800 border-amber-200'
+            }`}>
+              {aviso.texto}
+            </div>
+          )}
         </div>
 
-        {/* ... (O resto do código do boletim continua igual, deixei omitido aqui para não ficar gigante, mas você não precisa mexer na parte de baixo do seu arquivo original se não quiser, ou pode colar por cima se copiou tudo) */}
-        {resultado && resultado.nota_final !== undefined && (
-          <div className="mt-12 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-fade-in-up">
-            <div className="bg-slate-50 border-b border-slate-200 p-8 text-center">
-              <h2 className="text-xl font-bold text-slate-500 uppercase tracking-widest mb-2">Nota Final</h2>
-              <div className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-900">
-                {resultado.nota_final}
+        {/* BÔNUS: Adicionamos o "ref" aqui para a tela saber para onde rolar */}
+        <div ref={boletimRef}>
+          {resultado && resultado.nota_final !== undefined && (
+            <div className="mt-12 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-fade-in-up">
+              <div className="bg-slate-50 border-b border-slate-200 p-8 text-center">
+                <h2 className="text-xl font-bold text-slate-500 uppercase tracking-widest mb-2">Nota Final</h2>
+                <div className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-900">
+                  {resultado.nota_final}
+                </div>
+                <p className="mt-6 text-slate-700 text-lg leading-relaxed bg-white p-6 rounded-xl shadow-sm border border-slate-100 inline-block max-w-3xl text-left italic">
+                  "{resultado.resumo_geral}"
+                </p>
               </div>
-              <p className="mt-6 text-slate-700 text-lg leading-relaxed bg-white p-6 rounded-xl shadow-sm border border-slate-100 inline-block max-w-3xl text-left italic">
-                "{resultado.resumo_geral}"
-              </p>
-            </div>
-            <div className="p-8">
-              <h3 className="text-2xl font-bold text-slate-800 mb-6 border-b-2 border-slate-100 pb-2">
-                Detalhamento por Competência
-              </h3>
-              <div className="space-y-6">
-                {[1, 2, 3, 4, 5].map((num) => {
-                  const comp = resultado[`competencia_${num}`];
-                  if (!comp) return null;
-                  return (
-                    <div key={num} className="bg-slate-50 rounded-xl p-6 border-l-4 border-indigo-500 hover:shadow-md transition-shadow">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
-                        <h4 className="text-lg font-bold text-slate-800">Competência {num}</h4>
-                        <span className="bg-indigo-100 text-indigo-800 py-1.5 px-4 rounded-full font-bold text-sm">
-                          {comp.nota} / 200 pts
-                        </span>
-                      </div>
-                      <div className="mb-4">
-                        <span className="font-semibold text-slate-700 block mb-1">Diagnóstico:</span>
-                        <span className="text-slate-600 leading-relaxed">{comp.justificativa}</span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg border border-slate-200 flex items-start gap-3">
-                        <svg className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div>
-                          <span className="font-semibold text-slate-700 block mb-1">Como melhorar:</span>
-                          <span className="text-slate-600 text-sm">{comp.melhoria}</span>
+              <div className="p-8">
+                <h3 className="text-2xl font-bold text-slate-800 mb-6 border-b-2 border-slate-100 pb-2">
+                  Detalhamento por Competência
+                </h3>
+                <div className="space-y-6">
+                  {[1, 2, 3, 4, 5].map((num) => {
+                    const comp = resultado[`competencia_${num}`];
+                    if (!comp) return null;
+                    return (
+                      <div key={num} className="bg-slate-50 rounded-xl p-6 border-l-4 border-indigo-500 hover:shadow-md transition-shadow">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+                          <h4 className="text-lg font-bold text-slate-800">Competência {num}</h4>
+                          <span className="bg-indigo-100 text-indigo-800 py-1.5 px-4 rounded-full font-bold text-sm">
+                            {comp.nota} / 200 pts
+                          </span>
+                        </div>
+                        <div className="mb-4">
+                          <span className="font-semibold text-slate-700 block mb-1">Diagnóstico:</span>
+                          <span className="text-slate-600 leading-relaxed">{comp.justificativa}</span>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg border border-slate-200 flex items-start gap-3">
+                          <svg className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div>
+                            <span className="font-semibold text-slate-700 block mb-1">Como melhorar:</span>
+                            <span className="text-slate-600 text-sm">{comp.melhoria}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </main>
   );

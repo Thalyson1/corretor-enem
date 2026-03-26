@@ -3,11 +3,9 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    // 1. Recebe os dados da requisição (texto da redação e o tema)
     const { texto, tema } = await request.json();
 
     // 🛑 FILTRO DE TAMANHO (Regra das 7 linhas do ENEM)
-    // Uma linha manuscrita tem em média 10 palavras. 7 linhas = ~70 palavras.
     const numeroDePalavras = texto.trim().split(/\s+/).length;
     if (numeroDePalavras < 70) {
       return NextResponse.json({
@@ -17,18 +15,22 @@ export async function POST(request: Request) {
         competencia_4: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
         competencia_5: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
         nota_final: 0,
-        resumo_geral: "🛑 TEXTO INSUFICIENTE: De acordo com as regras oficiais do ENEM, redações com até 7 linhas (ou muito curtas) recebem nota zero."
+        resumo_geral: "🛑 TEXTO INSUFICIENTE: De acordo com as regras oficiais do ENEM, redações com até 7 linhas recebem nota zero."
       });
     }
 
-    // 2. Chave de API
-    const apiKey = process.env.GEMINI_API_KEY as string;
-    if (!apiKey) {
-      throw new Error("Chave da API do Gemini não configurada.");
-    }
-    const genAI = new GoogleGenerativeAI(apiKey);
+    // 🔑 O CHAVEIRO MÁGICO (Pega todas as chaves cadastradas no Vercel)
+    const chavesDisponiveis = [
+      process.env.GEMINI_API_KEY,
+      process.env.GEMINI_API_KEY_2,
+      process.env.GEMINI_API_KEY_3 // Se quiser adicionar mais depois, o código já está pronto!
+    ].filter(Boolean); // O filter(Boolean) remove as chaves que estiverem vazias
 
-    // 3. Prompt Mestre (Humanizado + Anti-Troll + Tema Específico)
+    if (chavesDisponiveis.length === 0) {
+      throw new Error("Nenhuma chave de API configurada.");
+    }
+
+    // 🧠 Prompt Mestre Calibrado
     const promptMestre = `Você é um corretor SÊNIOR da banca do ENEM (INEP).
     Sua missão é avaliar a redação aplicando a Matriz de Referência Oficial com EXTREMA PRECISÃO. Não seja leniente com textos fracos, mas não seja carrasco com textos excelentes. A nota deve refletir a realidade.
     
@@ -43,13 +45,13 @@ export async function POST(request: Request) {
     - GRAMÁTICA (C1 e C4): Seja justo. Textos com erros frequentes de vírgula, concordância e acentuação MERECEM notas baixas (40 ou 80). NÃO perdoe erros estruturais. Só dê 160 ou 200 se a escrita for madura, rica e tiver, no máximo, 2 ou 3 desvios isolados.
     - REPERTÓRIO "CURINGA" vs. REPERTÓRIO PRODUTIVO (C2 e C3): Saiba diferenciar! 
       * Se o aluno cita um pensador (Locke, Bauman, etc.) de forma "solta", sem explicar a relação direta com o problema, é "Curinga": dê 120 na C2 e puna a C3 por argumentação superficial.
-      * PORÉM, se a citação faz sentido lógico, é bem explicada e aprofunda o argumento focado no tema, PREMIE com 160 ou 200. Não puna alunos excelentes só por usarem filósofos famosos!
-    - MATEMÁTICA DA CONCLUSÃO (C5): 40 pontos por elemento explícito (1. Agente, 2. Ação, 3. Modo/Meio, 4. Efeito, 5. Detalhamento). Se faltar clareza no Modo/Meio (ex: dizer só "através do Estado"), não pontue esse elemento.
+      * PORÉM, se a citação faz sentido lógico, é bem explicada e aprofunda o argumento focado no tema, PREMIE com 160 ou 200.
+    - MATEMÁTICA DA CONCLUSÃO (C5): 40 pontos por elemento explícito (1. Agente, 2. Ação, 3. Modo/Meio, 4. Efeito, 5. Detalhamento). Se faltar clareza no Modo/Meio, não pontue esse elemento.
 
     📊 3. APLICAÇÃO DA GRADE OFICIAL:
-    - C1 (Gramática): 200 (Excelente, máx 2 desvios). 160 (Boa, poucos desvios). 120 (Regular). 80 (Deficitária). 40 (Muitos desvios graves).
+    - C1 (Gramática): 200 (Excelente, máx 2 desvios). 160 (Boa). 120 (Regular). 80 (Deficitária). 40 (Muitos desvios graves).
     - C2 (Repertório/Tema): 200 (Abordagem completa + Repertório pertinente COM USO PRODUTIVO REAL). 160 (Pertinente, mas uso mediano). 120 (Uso forçado/curinga ou textos motivadores). 80 (Cópias).
-    - C3 (Coerência): 200 (Projeto estratégico, argumentos aprofundados e autorais). 160 (Boa argumentação, poucas falhas). 120 (Argumentos genéricos/superficiais). 80 (Muitas falhas).
+    - C3 (Coerência): 200 (Projeto estratégico, argumentos aprofundados). 160 (Boa argumentação, poucas falhas). 120 (Argumentos genéricos/superficiais). 80 (Muitas falhas).
     - C4 (Coesão): 200 (Vocabulário rico, operadores inter e intraparágrafos sem repetições). 160 (Boa presença, raras repetições). 120 (Regular). 80 (Muitas repetições).
     - C5 (Intervenção): 200 (5 elementos). 160 (4 elementos). 120 (3 elementos). 80 (2 elementos). 40 (1 elemento). 0 (Nenhum).
     
@@ -67,54 +69,50 @@ export async function POST(request: Request) {
     Redação do aluno a ser avaliada:
     "${texto}"`;
 
-    // 4. Roleta de Modelos (Fallback - Tolerância a falhas)
     const modelosParaTestar = [
-      "gemini-2.5-flash",             // O Titular: Rápido e inteligente
-      "gemini-2.0-flash",             // Reserva imediato: Excelente qualidade
-      "gemini-2.0-flash-001",         // Endpoint alternativo do 2.0 (conta cota separada em alguns casos)
-      "gemini-2.5-pro",               // O Gênio: Mais lento e cota menor, mas qualidade impecável
-      "gemini-2.5-flash-lite",        // Pleno: Estável e rápido
-      "gemini-2.0-flash-lite-001",    // Pleno alternativo
-      "gemini-1.5-pro",               // Sênior da geração passada (muito seguro)
-      "gemini-1.5-flash"              // O salva-vidas final
+      "gemini-2.5-flash", 
+      "gemini-2.0-flash", 
+      "gemini-2.5-pro", 
+      "gemini-2.5-flash-lite", 
+      "gemini-1.5-pro"
     ];
     
     let jsonText = "";
     let avaliacaoConcluida = false;
 
-    for (const nomeDoModelo of modelosParaTestar) {
-      try {
-        console.log(`⏳ Tentando avaliar com o modelo: ${nomeDoModelo}...`);
-        
-        const model = genAI.getGenerativeModel({ 
-          model: nomeDoModelo,
-          generationConfig: {
-            temperature: 0.7 
-          }
-        });
+    // 🔄 O SUPER LOOP (Tenta Chave 1. Se falhar, tenta Chave 2...)
+    for (let i = 0; i < chavesDisponiveis.length; i++) {
+      if (avaliacaoConcluida) break; // Se já conseguiu a nota, para tudo.
+      
+      const genAI = new GoogleGenerativeAI(chavesDisponiveis[i] as string);
+      console.log(`🔑 Testando com a Chave de API número ${i + 1}...`);
 
-        const result = await model.generateContent(promptMestre);
-        const response = await result.response;
-        jsonText = response.text();
-        
-        avaliacaoConcluida = true;
-        console.log(`✅ Sucesso! Redação avaliada usando: ${nomeDoModelo}`);
-        break; // Deu certo, para o loop e segue o jogo!
+      for (const nomeDoModelo of modelosParaTestar) {
+        try {
+          console.log(`⏳ Tentando o modelo: ${nomeDoModelo}...`);
+          const model = genAI.getGenerativeModel({ 
+            model: nomeDoModelo,
+            generationConfig: { temperature: 0.7 }
+          });
 
-      } catch (erroDeModelo) {
-        console.error(`❌ O modelo ${nomeDoModelo} falhou. Indo para o próximo...`);
+          const result = await model.generateContent(promptMestre);
+          const response = await result.response;
+          jsonText = response.text();
+          
+          avaliacaoConcluida = true;
+          console.log(`✅ SUCESSO! Avaliado com Chave ${i + 1} e Modelo ${nomeDoModelo}`);
+          break; // Sai do loop de modelos
+        } catch (erroDeModelo) {
+          console.error(`❌ Falha no modelo ${nomeDoModelo} com a Chave ${i + 1}.`);
+        }
       }
     }
 
-    // Se o loop rodou inteiro e não achou nenhum modelo disponível
     if (!avaliacaoConcluida) {
-      throw new Error("Todos os modelos de IA atingiram o limite ou falharam.");
+      throw new Error("Todas as chaves e modelos atingiram o limite ou falharam.");
     }
 
-    // 5. Limpeza de Segurança do JSON
     jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    // 6. Devolve as notas prontas para o site
     return NextResponse.json(JSON.parse(jsonText));
 
   } catch (error) {
