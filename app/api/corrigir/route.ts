@@ -69,10 +69,14 @@ export async function POST(request: Request) {
 
     // 4. Roleta de Modelos (Fallback - Tolerância a falhas)
     const modelosParaTestar = [
-      "gemini-2.5-flash", 
-      "gemini-2.5-flash-lite", 
-      "gemini-2.0-flash",
-      "gemini-1.5-flash" // Adicionei um ultra-estável no final da fila por segurança
+      "gemini-2.5-flash",             // O Titular: Rápido e inteligente
+      "gemini-2.0-flash",             // Reserva imediato: Excelente qualidade
+      "gemini-2.0-flash-001",         // Endpoint alternativo do 2.0 (conta cota separada em alguns casos)
+      "gemini-2.5-pro",               // O Gênio: Mais lento e cota menor, mas qualidade impecável
+      "gemini-2.5-flash-lite",        // Pleno: Estável e rápido
+      "gemini-2.0-flash-lite-001",    // Pleno alternativo
+      "gemini-1.5-pro",               // Sênior da geração passada (muito seguro)
+      "gemini-1.5-flash"              // O salva-vidas final
     ];
     
     let jsonText = "";
