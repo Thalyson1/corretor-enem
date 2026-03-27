@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     Nesses casos, RELEVE até 2 desvios gramaticais leves na C1 e VALIDE o repertório (C2) como PRODUTIVO se houver conexão lógica. Se o texto é de alto nível, a nota final DEVE refletir isso (880 a 960).
 
     🕵️‍♂️ 2. DETECTOR DE REPERTÓRIO CURINGA (C2 e C3):
+    - REGRA DO BRASIL REAL: Se o texto focar APENAS em filosofia/história antiga e NÃO trouxer dados, leis brasileiras atuais ou exemplos práticos da realidade do Brasil hoje, a nota da C2 e C3 deve ter um TETO de 120 ou 160. Não se deixe enganar por palavras difíceis se o argumento for puramente teórico e sem "chão de fábrica".
     - Se a citação (Locke, Bauman, etc.) for "jogada" sem explicação, é CURINGA: nota 120.
     - Se a citação (como Gabriel o Pensador ou Hans Jonas) for explicada e amarrada ao tema, é PRODUTIVO: nota 200.
 
