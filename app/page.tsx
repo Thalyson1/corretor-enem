@@ -1,9 +1,16 @@
 import { GraderClient } from "@/app/grader-client";
 import { LogoutButton } from "@/app/logout-button";
 import { requireAuth } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { getEssayHistory, getUsageSnapshot } from "@/lib/essays";
 
 export default async function Home() {
   const { profile, session } = await requireAuth();
+  const supabase = await createClient();
+  const [history, usage] = await Promise.all([
+    getEssayHistory(supabase, profile),
+    getUsageSnapshot(supabase, profile),
+  ]);
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -46,7 +53,11 @@ export default async function Home() {
 
       <section className="-mt-6 px-4 pb-12 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
-          <GraderClient />
+          <GraderClient
+            initialHistory={history}
+            initialUsage={usage}
+            currentRole={profile.role}
+          />
         </div>
       </section>
     </main>

@@ -1,24 +1,83 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getUsageSnapshot, saveCorrectionResult } from "@/lib/essays";
+import type { UserProfile } from "@/lib/auth";
+import type { CorrectionResult } from "@/lib/essay-types";
+
+async function getCurrentProfile() {
+  const supabase = await createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.user) {
+    return { supabase, session: null, profile: null };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, role, is_active, school_name, class_group")
+    .eq("id", session.user.id)
+    .single();
+
+  return {
+    supabase,
+    session,
+    profile: (profile as UserProfile | null) ?? null,
+  };
+}
+
+function getQuotaErrorMessage(role: UserProfile["role"]) {
+  if (role === "student") {
+    return "Você atingiu seu limite semanal de redações salvas. Tente novamente na próxima semana ou peça apoio à professora.";
+  }
+
+  if (role === "teacher") {
+    return "A conta da professora atingiu o limite semanal configurado para correções.";
+  }
+
+  return "A conta atual atingiu o limite semanal configurado.";
+}
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const { supabase, session, profile } = await getCurrentProfile();
 
-    if (!session?.user) {
+    if (!session?.user || !profile) {
       return NextResponse.json(
         { error: "Você precisa estar autenticado para usar o corretor." },
         { status: 401 },
       );
     }
 
-    const { texto, tema } = await request.json();
+    if (!profile.is_active) {
+      return NextResponse.json(
+        { error: "Sua conta está inativa no momento." },
+        { status: 403 },
+      );
+    }
 
-    const numeroDePalavras = texto.trim().split(/\s+/).length;
+    const usageBefore = await getUsageSnapshot(supabase, profile);
+
+    if (
+      usageBefore.weeklyCorrectionsUsed >= usageBefore.weeklyCorrectionsLimit ||
+      usageBefore.weeklySavedEssaysUsed >= usageBefore.weeklySavedEssaysLimit
+    ) {
+      return NextResponse.json(
+        {
+          error: getQuotaErrorMessage(profile.role),
+          usage: usageBefore,
+        },
+        { status: 403 },
+      );
+    }
+
+    const { texto, tema } = await request.json();
+    const normalizedTheme = String(tema ?? "").trim() || "Tema livre";
+    const normalizedText = String(texto ?? "").trim();
+
+    const numeroDePalavras = normalizedText.split(/\s+/).length;
     if (numeroDePalavras < 70) {
       return NextResponse.json({
         competencia_1: {
@@ -34,6 +93,7 @@ export async function POST(request: Request) {
         nota_final: 0,
         resumo_geral:
           "REDAÇÃO ANULADA: o texto apresenta menos de 70 palavras estimadas, o que configura insuficiência de texto segundo os critérios adotados nesta plataforma.",
+        usage: usageBefore,
       });
     }
 
@@ -49,7 +109,7 @@ export async function POST(request: Request) {
 
     const promptMestre = `Você é um corretor SÊNIOR da banca do ENEM (INEP). Sua missão é ser JUSTO E IMPARCIAL.
 
-TEMA DA REDAÇÃO: "${tema}"
+TEMA DA REDAÇÃO: "${normalizedTheme}"
 
 1. REGRA DE OURO:
 Se o aluno demonstra vocabulário sofisticado, usa citações culturais e conecta argumentos com fluidez, valorize isso. Nesses casos, releve até 2 desvios gramaticais leves na C1 e valide o repertório da C2 como produtivo se houver conexão lógica. Se o texto é de alto nível, a nota final deve refletir isso.
@@ -85,7 +145,7 @@ IMPORTANTE:
   "resumo_geral": ""
 }
 
-REDAÇÃO PARA AVALIAR: "${texto}"`;
+REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
     const modelosParaTestar = [
       "gemini-2.5-pro",
@@ -123,9 +183,22 @@ REDAÇÃO PARA AVALIAR: "${texto}"`;
     const startIdx = rawResponse.indexOf("{");
     const endIdx = rawResponse.lastIndexOf("}") + 1;
     const jsonString = rawResponse.substring(startIdx, endIdx);
-    const avaliacao = JSON.parse(jsonString);
+    const avaliacao = JSON.parse(jsonString) as CorrectionResult;
 
-    return NextResponse.json(avaliacao);
+    const savedEssay = await saveCorrectionResult({
+      supabase,
+      profile,
+      text: normalizedText,
+      theme: normalizedTheme,
+      result: avaliacao,
+    });
+    const usageAfter = await getUsageSnapshot(supabase, profile);
+
+    return NextResponse.json({
+      ...avaliacao,
+      savedEssay,
+      usage: usageAfter,
+    });
   } catch (error) {
     console.error("Erro na API de correção:", error);
     return NextResponse.json(
