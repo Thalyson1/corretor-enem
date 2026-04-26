@@ -16,7 +16,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Corretor de Redação ENEM",
-  description: "Plataforma avançada de avaliação textual com Inteligência Artificial baseada nas diretrizes do INEP.",
+  description:
+    "Plataforma avançada de avaliação textual com Inteligência Artificial baseada nas diretrizes do INEP.",
 };
 
 export default function RootLayout({
@@ -26,10 +27,10 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col">
         {children}
         <Analytics />
         <SpeedInsights />
