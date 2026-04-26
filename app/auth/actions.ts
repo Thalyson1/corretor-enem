@@ -2,14 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-
-export type AuthFormState = {
-  error: string | null;
-};
-
-export const initialAuthFormState: AuthFormState = {
-  error: null,
-};
+import type { AuthFormState } from "@/app/auth/form-state";
 
 export async function signInAction(
   _prevState: AuthFormState,

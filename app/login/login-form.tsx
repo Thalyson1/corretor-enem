@@ -2,10 +2,12 @@
 
 import { useActionState } from "react";
 import {
-  initialAuthFormState,
   signInAction,
-  type AuthFormState,
 } from "@/app/auth/actions";
+import {
+  initialAuthFormState,
+  type AuthFormState,
+} from "@/app/auth/form-state";
 
 type LoginFormProps = {
   status?: string;
