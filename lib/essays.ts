@@ -9,6 +9,7 @@ import type {
   StudentSummary,
   UsageSnapshot,
 } from "@/lib/essay-types";
+import { getDisplayName } from "@/lib/profile-display";
 
 type DatabaseClient = SupabaseClient;
 
@@ -398,7 +399,7 @@ export async function getUserRoster(
 
     return {
       id: row.id,
-      fullName: row.full_name ?? "Sem nome",
+      fullName: getDisplayName(row.full_name, row.email),
       email: row.email,
       schoolName: row.school_name,
       classGroup: row.class_group,
@@ -461,6 +462,7 @@ export async function getTeacherEssayFeed(
       id: string;
       fullName: string;
       email: string | null;
+      schoolName: string | null;
       classGroup: string | null;
     }
   >();
@@ -468,7 +470,7 @@ export async function getTeacherEssayFeed(
   if (studentIds.length > 0) {
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, full_name, email, class_group")
+      .select("id, full_name, email, school_name, class_group")
       .in("id", studentIds);
 
     if (profilesError) {
@@ -480,8 +482,12 @@ export async function getTeacherEssayFeed(
         profile.id as string,
         {
           id: profile.id as string,
-          fullName: (profile.full_name as string | null) ?? "Sem nome",
+          fullName: getDisplayName(
+            profile.full_name as string | null,
+            profile.email as string | null,
+          ),
           email: (profile.email as string | null) ?? null,
+          schoolName: (profile.school_name as string | null) ?? null,
           classGroup: (profile.class_group as string | null) ?? null,
         },
       ]),
@@ -505,8 +511,9 @@ export async function getTeacherEssayFeed(
       student:
         profileMap.get(row.student_id) ?? {
           id: row.student_id,
-          fullName: "Sem nome",
+          fullName: "Usuário",
           email: null,
+          schoolName: null,
           classGroup: null,
         },
     }))

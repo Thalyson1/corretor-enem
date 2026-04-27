@@ -1,14 +1,26 @@
-import { createClient } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth";
-import { getTeacherEssayFeed, getUserRoster } from "@/lib/essays";
 import { LogoutButton } from "@/app/logout-button";
 import { NavLinks } from "@/app/nav-links";
+import { requireRole } from "@/lib/auth";
+import { getTeacherEssayFeed, getUserRoster } from "@/lib/essays";
+import { createClient } from "@/lib/supabase/server";
 
 type TeacherPageProps = {
   searchParams?: Promise<{
     class_group?: string;
   }>;
 };
+
+function getCacheSourceLabel(cacheSource: string) {
+  if (cacheSource === "duplicate_student") {
+    return "Reaproveitada do próprio aluno";
+  }
+
+  if (cacheSource === "duplicate_global") {
+    return "Reaproveitada do cache global";
+  }
+
+  return "Correção inédita";
+}
 
 export default async function TeacherPage({ searchParams }: TeacherPageProps) {
   const { profile } = await requireRole(["teacher", "admin"]);
@@ -22,6 +34,9 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
 
   const availableGroups = Array.from(
     new Set(students.map((student) => student.classGroup).filter(Boolean)),
+  ) as string[];
+  const activeSchools = Array.from(
+    new Set(students.map((student) => student.schoolName).filter(Boolean)),
   ) as string[];
 
   return (
@@ -76,9 +91,13 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
                 Aplicar filtro
               </button>
             </div>
+            <p className="mt-3 text-sm text-slate-500">
+              Escolas presentes no filtro atual:{" "}
+              {activeSchools.length > 0 ? activeSchools.join(", ") : "nenhuma informada"}
+            </p>
           </form>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="text-sm font-semibold text-slate-500">Alunos visíveis</div>
               <div className="mt-2 text-3xl font-black text-slate-900">{students.length}</div>
@@ -104,6 +123,10 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
                   : "--"}
               </div>
             </div>
+            <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm font-semibold text-slate-500">Escolas mapeadas</div>
+              <div className="mt-2 text-3xl font-black text-slate-900">{activeSchools.length}</div>
+            </div>
           </div>
 
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -113,6 +136,7 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
                 <thead>
                   <tr className="text-left text-slate-500">
                     <th className="pb-3 pr-4">Aluno</th>
+                    <th className="pb-3 pr-4">Escola</th>
                     <th className="pb-3 pr-4">Turma</th>
                     <th className="pb-3 pr-4">Redações</th>
                     <th className="pb-3 pr-4">Média</th>
@@ -127,6 +151,7 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
                         <div className="font-semibold text-slate-900">{student.fullName}</div>
                         <div className="text-slate-500">{student.email}</div>
                       </td>
+                      <td className="py-3 pr-4">{student.schoolName ?? "--"}</td>
                       <td className="py-3 pr-4">{student.classGroup ?? "--"}</td>
                       <td className="py-3 pr-4">{student.essayCount}</td>
                       <td className="py-3 pr-4">{student.averageScore ?? "--"}</td>
@@ -142,6 +167,12 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-bold text-slate-900">Redações recentes</h2>
             <div className="mt-5 space-y-4">
+              {feed.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Nenhuma redação encontrada para o filtro atual.
+                </div>
+              ) : null}
+
               {feed.map((essay) => (
                 <article
                   key={essay.id}
@@ -153,6 +184,7 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
                         {essay.student.fullName}
                       </div>
                       <div className="text-sm text-slate-500">
+                        {essay.student.schoolName ?? "Escola não informada"} •{" "}
                         {essay.student.classGroup ?? "Sem turma"} • {essay.student.email}
                       </div>
                       <div className="mt-2 font-medium text-slate-800">{essay.theme}</div>
@@ -162,10 +194,10 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
                         {essay.finalScore ?? "--"} pts
                       </span>
                       <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
-                        {essay.aiModel ?? "modelo não informado"}
+                        {essay.aiModel ?? "Modelo não informado"}
                       </span>
                       <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                        {essay.cacheSource}
+                        {getCacheSourceLabel(essay.cacheSource)}
                       </span>
                     </div>
                   </div>

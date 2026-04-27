@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 
 function parseOptionalNumber(value: FormDataEntryValue | null) {
   const parsed = String(value ?? "").trim();
@@ -18,6 +18,7 @@ export async function updateUserAccessAction(formData: FormData) {
   await requireRole(["admin"]);
 
   const profileId = String(formData.get("profile_id") ?? "");
+  const fullName = String(formData.get("full_name") ?? "").trim() || null;
   const role = String(formData.get("role") ?? "student");
   const isActive = String(formData.get("is_active") ?? "true") === "true";
   const classGroup = String(formData.get("class_group") ?? "").trim() || null;
@@ -37,6 +38,7 @@ export async function updateUserAccessAction(formData: FormData) {
   await supabase
     .from("profiles")
     .update({
+      full_name: fullName,
       role,
       is_active: isActive,
       class_group: classGroup,

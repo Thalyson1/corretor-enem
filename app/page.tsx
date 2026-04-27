@@ -2,8 +2,9 @@ import { GraderClient } from "@/app/grader-client";
 import { NavLinks } from "@/app/nav-links";
 import { LogoutButton } from "@/app/logout-button";
 import { requireAuth } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
 import { getEssayHistory, getUsageSnapshot } from "@/lib/essays";
+import { getDisplayName } from "@/lib/profile-display";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function Home() {
   const { profile, session } = await requireAuth();
@@ -12,6 +13,10 @@ export default async function Home() {
     getEssayHistory(supabase, profile),
     getUsageSnapshot(supabase, profile),
   ]);
+  const displayName = getDisplayName(profile?.full_name, session.user.email);
+  const shouldShowEmailLine =
+    !!session.user.email &&
+    displayName.toLowerCase() !== session.user.email.toLowerCase();
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -39,11 +44,13 @@ export default async function Home() {
               </div>
               <div className="text-sm text-indigo-100">Conectado como</div>
               <div className="mt-1 text-lg font-semibold text-white">
-                {profile?.full_name || session.user.email}
+                {displayName}
               </div>
-              <div className="mt-1 text-sm text-indigo-100">
-                {session.user.email}
-              </div>
+              {shouldShowEmailLine ? (
+                <div className="mt-1 text-sm text-indigo-100">
+                  {session.user.email}
+                </div>
+              ) : null}
               <div className="mt-3 inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-100">
                 Perfil: {profile?.role ?? "student"}
               </div>

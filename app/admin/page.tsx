@@ -1,12 +1,12 @@
-import { createClient } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth";
-import { getUserRoster } from "@/lib/essays";
 import { LogoutButton } from "@/app/logout-button";
 import { NavLinks } from "@/app/nav-links";
 import {
   updateGlobalLimitsAction,
   updateUserAccessAction,
 } from "@/app/admin/actions";
+import { requireRole } from "@/lib/auth";
+import { getUserRoster } from "@/lib/essays";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function AdminPage() {
   const { profile } = await requireRole(["admin"]);
@@ -47,7 +47,14 @@ export default async function AdminPage() {
       <section className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl space-y-8">
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-bold text-slate-900">Limites globais por perfil</h2>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Limites globais por perfil</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  A conta de estudante agora começa com 10 redações e 10 correções por semana.
+                </p>
+              </div>
+            </div>
             <div className="mt-5 grid gap-4 lg:grid-cols-3">
               {(usageLimits ?? []).map((limit) => (
                 <form
@@ -101,7 +108,7 @@ export default async function AdminPage() {
                 >
                   <input type="hidden" name="profile_id" value={user.id} />
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
+                    <div className="lg:max-w-sm">
                       <div className="text-lg font-semibold text-slate-900">
                         {user.fullName}
                       </div>
@@ -110,8 +117,19 @@ export default async function AdminPage() {
                         Média: {user.averageScore ?? "--"} • Melhor nota: {user.bestScore ?? "--"} •
                         Redações: {user.essayCount}
                       </div>
+                      <div className="mt-1 text-sm text-slate-500">
+                        Escola: {user.schoolName ?? "--"} • Turma: {user.classGroup ?? "--"}
+                      </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Nome
+                        <input
+                          name="full_name"
+                          defaultValue={user.fullName === "Usuário" ? "" : user.fullName}
+                          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                        />
+                      </label>
                       <label className="text-sm font-medium text-slate-700">
                         Perfil
                         <select
@@ -153,26 +171,28 @@ export default async function AdminPage() {
                           className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                         />
                       </label>
-                      <label className="text-sm font-medium text-slate-700">
-                        Override correções
-                        <input
-                          name="weekly_corrections_override"
-                          type="number"
-                          min="0"
-                          defaultValue={user.weeklyCorrectionsOverride ?? ""}
-                          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                        />
-                      </label>
                     </div>
                   </div>
-                  <label className="mt-3 block text-sm font-medium text-slate-700">
-                    Escola/observação de unidade
-                    <input
-                      name="school_name"
-                      defaultValue={user.schoolName ?? ""}
-                      className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    />
-                  </label>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Escola ou unidade
+                      <input
+                        name="school_name"
+                        defaultValue={user.schoolName ?? ""}
+                        className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Override correções
+                      <input
+                        name="weekly_corrections_override"
+                        type="number"
+                        min="0"
+                        defaultValue={user.weeklyCorrectionsOverride ?? ""}
+                        className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                      />
+                    </label>
+                  </div>
                   <button
                     type="submit"
                     className="mt-4 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"

@@ -63,11 +63,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               Acesso
             </div>
             <h2 className="text-3xl font-bold tracking-tight text-slate-950">
-              Entrar no sistema
+              Entrar ou criar conta
             </h2>
             <p className="text-sm leading-6 text-slate-600">
-              Use a conta cadastrada pela escola. Se ainda não tiver acesso,
-              solicite seu cadastro à coordenação ou à professora responsável.
+              Cada novo cadastro entra como estudante por padrão. Depois, se
+              necessário, a escola pode promover a conta para professora ou admin.
             </p>
           </div>
 

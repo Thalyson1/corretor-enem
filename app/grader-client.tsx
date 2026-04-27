@@ -42,6 +42,25 @@ function getCacheLabel(cacheSource: EssayHistoryItem["cacheSource"]) {
   return "correção nova";
 }
 
+function getTrendLabel(history: EssayHistoryItem[]) {
+  if (history.length < 2) {
+    return "Ainda não há histórico suficiente para medir tendência.";
+  }
+
+  const [latest, previous] = history;
+  const diff = latest.finalScore - previous.finalScore;
+
+  if (diff > 0) {
+    return `Sua última redação subiu ${diff} pontos em relação à anterior.`;
+  }
+
+  if (diff < 0) {
+    return `Sua última redação caiu ${Math.abs(diff)} pontos em relação à anterior.`;
+  }
+
+  return "Sua última redação manteve a mesma pontuação da anterior.";
+}
+
 function ProgressChart({ history }: { history: EssayHistoryItem[] }) {
   const scores = history
     .slice()
@@ -142,6 +161,14 @@ export function GraderClient({
     return Math.round(total / history.length);
   }, [history]);
 
+  const bestScore = useMemo(() => {
+    if (history.length === 0) {
+      return null;
+    }
+
+    return Math.max(...history.map((essay) => essay.finalScore));
+  }, [history]);
+
   async function corrigirRedacao() {
     if (!redacao.trim()) {
       setAviso({
@@ -207,7 +234,7 @@ export function GraderClient({
 
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-sm font-semibold text-slate-500">
             {getUsageLabel(currentRole)}
@@ -234,7 +261,15 @@ export function GraderClient({
             {averageScore ?? "--"}
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Média calculada com base nas redações salvas até agora.
+            {getTrendLabel(history)}
+          </p>
+        </div>
+
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-sm font-semibold text-slate-500">Melhor nota</div>
+          <div className="mt-2 text-3xl font-black text-slate-900">{bestScore ?? "--"}</div>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Seu melhor desempenho salvo até agora.
           </p>
         </div>
       </div>
@@ -334,7 +369,7 @@ export function GraderClient({
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <span className="rounded-full bg-slate-200 px-3 py-1 font-semibold text-slate-700">
-                      {essay.aiModel ?? "modelo não informado"}
+                      {essay.aiModel ?? "Modelo não informado"}
                     </span>
                     <span className="rounded-full bg-amber-100 px-3 py-1 font-semibold text-amber-800">
                       {getCacheLabel(essay.cacheSource)}
@@ -351,9 +386,7 @@ export function GraderClient({
 
         <div className="space-y-6">
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="mb-4 text-2xl font-bold text-slate-900">
-              Progressão
-            </h3>
+            <h3 className="mb-4 text-2xl font-bold text-slate-900">Progressão</h3>
             <ProgressChart history={history} />
           </div>
 
