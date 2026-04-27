@@ -301,6 +301,7 @@ function analyzeEssaySignals(text: string) {
     hasExceptionalCohesion: connectorCount >= 5 && repetitionCount === 0,
     hasOnlyFunctionalCohesion:
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
+    hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
     hasCompleteIntervention:
@@ -338,7 +339,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     applyPenalty(
       processed,
       "competencia_2",
-      160,
+      signals.hasLexicalRepetition && signals.hasSimpleSyntax ? 120 : 160,
       "Houve ausência ou fragilidade de dados concretos, exemplos verificáveis ou referências consistentes para sustentar o repertório.",
       "Inclua estatísticas, pesquisas, leis, episódios históricos delimitados ou exemplos sociais concretos para sustentar o argumento.",
     );
@@ -379,7 +380,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     applyPenalty(
       processed,
       "competencia_1",
-      160,
+      signals.hasLexicalRepetition && signals.hasSimpleSyntax ? 120 : 160,
       "A linguagem não sustentou nível sofisticado e variado o suficiente para faixa máxima.",
       "Amplie o repertório vocabular, varie as estruturas sintáticas e refine a precisão lexical para elevar o nível de formalidade e maturidade textual.",
     );
@@ -425,13 +426,14 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (
-    getPenaltyCount(processed) < 2 &&
-    (!signals.hasSophisticatedLanguage || signals.hasLexicalRepetition || signals.hasSimpleSyntax)
+    getPenaltyCount(processed) === 0 &&
+    signals.hasLexicalRepetition &&
+    signals.hasSimpleSyntax
   ) {
     applyPenalty(
       processed,
       "competencia_1",
-      160,
+      120,
       "O domínio linguístico foi correto, mas não atingiu nível excepcional de variedade lexical e complexidade sintática.",
       "Busque maior diversidade vocabular, períodos mais bem modulados e construções sintáticas mais complexas sem perder clareza.",
     );
@@ -458,6 +460,21 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     (processed.competencia_3?.nota ?? 0) +
     (processed.competencia_4?.nota ?? 0) +
     (processed.competencia_5?.nota ?? 0);
+
+  if (signals.hasBasicEssayStructure && processed.nota_final < 480) {
+    ensureMinimumScore(processed, "competencia_1", 80);
+    ensureMinimumScore(processed, "competencia_2", 120);
+    ensureMinimumScore(processed, "competencia_3", 120);
+    ensureMinimumScore(processed, "competencia_4", 120);
+    ensureMinimumScore(processed, "competencia_5", 120);
+
+    processed.nota_final =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+  }
 
   const hasValidIntervention = (processed.competencia_5?.nota ?? 0) >= 160;
   const shouldApplyStructuredEssayFloor =
