@@ -728,6 +728,18 @@ function parseOpenAIOutputText(data: unknown) {
   return "";
 }
 
+function parseCorrectionResponse(rawResponse: string) {
+  const startIdx = rawResponse.indexOf("{");
+  const endIdx = rawResponse.lastIndexOf("}") + 1;
+
+  if (startIdx < 0 || endIdx <= startIdx) {
+    throw new Error("A IA retornou uma resposta fora do formato esperado.");
+  }
+
+  const jsonString = rawResponse.substring(startIdx, endIdx);
+  return JSON.parse(jsonString) as CorrectionResult;
+}
+
 async function corrigirComFallback(
   prompt: string,
   chavesDisponiveis: string[],
@@ -742,15 +754,19 @@ async function corrigirComFallback(
         const model = genAI.getGenerativeModel({ model: modelName });
         const result = await model.generateContent(prompt);
         const rawResponse = result.response.text();
+        const evaluation = parseCorrectionResponse(rawResponse);
 
         console.info("Gemini correction model selected", { model: modelName });
 
         return {
-          rawResponse,
+          evaluation,
           selectedModel: modelName,
         };
       } catch (error) {
-        const retryable = isRetryableGeminiError(error);
+        const retryable =
+          isRetryableGeminiError(error) ||
+          (error instanceof Error &&
+            error.message === "A IA retornou uma resposta fora do formato esperado.");
 
         console.warn("Gemini correction attempt failed", {
           model: modelName,
@@ -834,14 +850,20 @@ async function corrigirComOpenAI(prompt: string, apiKey: string) {
         throw new Error("A OpenAI retornou uma resposta vazia.");
       }
 
+      const evaluation = parseCorrectionResponse(rawResponse);
+
       console.info("OpenAI correction model selected", { model: modelName });
 
       return {
-        rawResponse,
+        evaluation,
         selectedModel: `openai:${modelName}`,
       };
     } catch (error) {
-      const retryable = isRetryableOpenAIError(error);
+      const retryable =
+        isRetryableOpenAIError(error) ||
+        (error instanceof Error &&
+          (error.message === "A IA retornou uma resposta fora do formato esperado." ||
+            error.message === "A OpenAI retornou uma resposta vazia."));
 
       console.warn("OpenAI correction attempt failed", {
         model: modelName,
@@ -1105,22 +1127,12 @@ SAÍDA:
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
-    const { rawResponse, selectedModel } = await corrigirComFallbackEntreIAs(
+    const { evaluation, selectedModel } = await corrigirComFallbackEntreIAs(
       promptMestre,
       chavesDisponiveis as string[],
       openAiApiKey,
     );
-
-    const startIdx = rawResponse.indexOf("{");
-    const endIdx = rawResponse.lastIndexOf("}") + 1;
-
-    if (startIdx < 0 || endIdx <= startIdx) {
-      throw new Error("A IA retornou uma resposta fora do formato esperado.");
-    }
-
-    const jsonString = rawResponse.substring(startIdx, endIdx);
-    const avaliacao = JSON.parse(jsonString) as CorrectionResult;
-    const processedEvaluation = safePostProcessEvaluation(avaliacao, normalizedText);
+    const processedEvaluation = safePostProcessEvaluation(evaluation, normalizedText);
     const comparison = await getLatestEssayComparison(
       supabase,
       profile,
