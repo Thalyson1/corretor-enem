@@ -303,14 +303,18 @@ function analyzeEssaySignals(text: string) {
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
+    hasCompleteIntervention:
+      normalized.includes("por meio") ||
+      normalized.includes("a fim de") ||
+      normalized.includes("com o objetivo de") ||
+      normalized.includes("deve promover"),
     isExceptionalEssay:
-      lexicalVariety >= 0.62 &&
-      averageWordLength >= 5 &&
-      connectorCount >= 5 &&
-      concreteDataCount >= 2 &&
-      strongRepertoireCount >= 2 &&
-      genericArgumentCount === 0 &&
-      repetitionCount === 0,
+      lexicalVariety >= 0.55 &&
+      averageWordLength >= 4.8 &&
+      connectorCount >= 4 &&
+      (strongRepertoireCount >= 1 || concreteDataCount >= 1) &&
+      genericArgumentCount <= 1 &&
+      repetitionCount <= 1,
   };
 }
 
@@ -509,7 +513,33 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
+  const canReachMaximumScore =
+    signals.hasCompleteEssayStructure &&
+    signals.hasBasicCohesion &&
+    signals.hasExceptionalLanguage &&
+    signals.hasExceptionalArgumentation &&
+    (signals.hasStrongRepertoire || !signals.hasGenericRepertoire) &&
+    signals.hasCompleteIntervention &&
+    !signals.hasSevereDevelopmentIssue &&
+    !signals.hasLexicalRepetition &&
+    !signals.hasSimpleSyntax;
+
+  if (canReachMaximumScore) {
+    ensureMinimumScore(processed, "competencia_1", 200);
+    ensureMinimumScore(processed, "competencia_2", 200);
+    ensureMinimumScore(processed, "competencia_3", 200);
+    ensureMinimumScore(processed, "competencia_4", 200);
+    ensureMinimumScore(processed, "competencia_5", 200);
+
+    processed.nota_final =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+  }
+
+  if (processed.nota_final === 1000 && !signals.isExceptionalEssay && !canReachMaximumScore) {
     applyPenalty(
       processed,
       "competencia_2",
