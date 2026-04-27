@@ -68,6 +68,12 @@ export type SaveEssayResponse = {
   usage?: UsageSnapshot;
 };
 
+export type ImprovedRewriteResponse = {
+  error?: string;
+  rewrittenEssay?: string;
+  aiModel?: string | null;
+};
+
 export type StudentSummary = {
   id: string;
   fullName: string;

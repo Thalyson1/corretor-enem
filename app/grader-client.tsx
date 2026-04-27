@@ -5,6 +5,7 @@ import type {
   CorrectionResponse,
   CorrectionResult,
   EssayHistoryItem,
+  ImprovedRewriteResponse,
   MonthlyRankingView,
   SaveEssayResponse,
   UsageSnapshot,
@@ -282,9 +283,12 @@ export function GraderClient({
   const [redacao, setRedacao] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rewriteLoading, setRewriteLoading] = useState(false);
   const [history, setHistory] = useState(initialHistory);
   const [usage, setUsage] = useState(initialUsage);
   const [resultado, setResultado] = useState<CorrectionResponse | null>(null);
+  const [improvedEssay, setImprovedEssay] = useState<string | null>(null);
+  const [improvedEssayModel, setImprovedEssayModel] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{
     tipo: "sucesso" | "erro";
     texto: string;
@@ -355,6 +359,8 @@ export function GraderClient({
 
     setLoading(true);
     setResultado(null);
+    setImprovedEssay(null);
+    setImprovedEssayModel(null);
     setAviso(null);
 
     try {
@@ -466,6 +472,54 @@ export function GraderClient({
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function gerarVersaoMelhorada() {
+    if (!tema.trim() || !redacao.trim() || !resultado) {
+      setAviso({
+        tipo: "erro",
+        texto: "FaÃ§a a correÃ§Ã£o da redaÃ§Ã£o antes de gerar a versÃ£o melhorada.",
+      });
+      return;
+    }
+
+    setRewriteLoading(true);
+    setAviso(null);
+
+    try {
+      const resposta = await fetch("/api/reescrever", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          texto: redacao,
+          tema: tema.trim(),
+          avaliacao: resultado,
+        }),
+      });
+
+      const dados = (await resposta.json()) as ImprovedRewriteResponse;
+
+      if (!resposta.ok) {
+        throw new Error(dados.error ?? "NÃ£o foi possÃ­vel gerar a versÃ£o melhorada.");
+      }
+
+      setImprovedEssay(dados.rewrittenEssay ?? null);
+      setImprovedEssayModel(dados.aiModel ?? null);
+      setAviso({
+        tipo: "sucesso",
+        texto: "Sua versÃ£o melhorada foi gerada com base no feedback da correÃ§Ã£o.",
+      });
+    } catch (error) {
+      setAviso({
+        tipo: "erro",
+        texto:
+          error instanceof Error
+            ? error.message
+            : "NÃ£o foi possÃ­vel gerar a versÃ£o melhorada agora.",
+      });
+    } finally {
+      setRewriteLoading(false);
     }
   }
 
@@ -604,6 +658,20 @@ export function GraderClient({
               }`}
             >
               {saving ? "Salvando..." : "Salvar redação no histórico"}
+            </button>
+          ) : null}
+
+          {resultado ? (
+            <button
+              onClick={gerarVersaoMelhorada}
+              disabled={rewriteLoading || loading || saving}
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-lg font-bold transition ${
+                rewriteLoading || loading || saving
+                  ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+                  : "border border-indigo-200 bg-white text-indigo-700 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-50"
+              }`}
+            >
+              {rewriteLoading ? "Gerando versÃ£o melhorada..." : "Gerar versÃ£o melhorada"}
             </button>
           ) : null}
         </div>
@@ -880,6 +948,32 @@ export function GraderClient({
                             </div>
                           ))}
                         </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {improvedEssay ? (
+                    <section className="space-y-4 border-t border-slate-200 pt-8">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-2">
+                          <h3 className="text-2xl font-bold text-slate-900">
+                            VersÃ£o melhorada da sua redaÃ§Ã£o
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            Esta reescrita preserva sua ideia central e aplica os principais ajustes do feedback.
+                          </p>
+                        </div>
+                        {currentRole === "admin" && improvedEssayModel ? (
+                          <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {improvedEssayModel}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-6">
+                        <p className="whitespace-pre-line text-sm leading-7 text-slate-700">
+                          {improvedEssay}
+                        </p>
                       </div>
                     </section>
                   ) : null}
