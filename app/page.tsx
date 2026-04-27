@@ -1,4 +1,5 @@
 import { GraderClient } from "@/app/grader-client";
+import { NavLinks } from "@/app/nav-links";
 import { LogoutButton } from "@/app/logout-button";
 import { requireAuth } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -33,6 +34,9 @@ export default async function Home() {
             </div>
 
             <div className="rounded-[28px] border border-white/10 bg-white/10 p-5 backdrop-blur">
+              <div className="mb-3">
+                <NavLinks role={profile.role} />
+              </div>
               <div className="text-sm text-indigo-100">Conectado como</div>
               <div className="mt-1 text-lg font-semibold text-white">
                 {profile?.full_name || session.user.email}

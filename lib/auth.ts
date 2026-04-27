@@ -14,6 +14,8 @@ export type UserProfile = {
   is_active: boolean;
   school_name: string | null;
   class_group: string | null;
+  weekly_saved_essays_override: number | null;
+  weekly_corrections_override: number | null;
 };
 
 export const getSession = cache(async () => {
@@ -35,7 +37,9 @@ export const getCurrentUserProfile = cache(async () => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, is_active, school_name, class_group")
+    .select(
+      "id, email, full_name, role, is_active, school_name, class_group, weekly_saved_essays_override, weekly_corrections_override",
+    )
     .eq("id", session.user.id)
     .single();
 
@@ -63,4 +67,14 @@ export async function requireAuth() {
     session,
     profile,
   };
+}
+
+export async function requireRole(allowedRoles: UserRole[]) {
+  const auth = await requireAuth();
+
+  if (!allowedRoles.includes(auth.profile.role)) {
+    redirect("/");
+  }
+
+  return auth;
 }

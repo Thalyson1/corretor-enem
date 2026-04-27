@@ -30,6 +30,18 @@ function getUsageLabel(role: GraderClientProps["currentRole"]) {
   return "Uso semanal da conta";
 }
 
+function getCacheLabel(cacheSource: EssayHistoryItem["cacheSource"]) {
+  if (cacheSource === "duplicate_student") {
+    return "cache do próprio aluno";
+  }
+
+  if (cacheSource === "duplicate_global") {
+    return "cache global";
+  }
+
+  return "correção nova";
+}
+
 function ProgressChart({ history }: { history: EssayHistoryItem[] }) {
   const scores = history
     .slice()
@@ -319,6 +331,14 @@ export function GraderClient({
                     <div className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-bold text-indigo-800">
                       {essay.finalScore} pontos
                     </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full bg-slate-200 px-3 py-1 font-semibold text-slate-700">
+                      {essay.aiModel ?? "modelo não informado"}
+                    </span>
+                    <span className="rounded-full bg-amber-100 px-3 py-1 font-semibold text-amber-800">
+                      {getCacheLabel(essay.cacheSource)}
+                    </span>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-slate-600">
                     {essay.summary}

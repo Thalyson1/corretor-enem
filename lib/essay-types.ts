@@ -31,9 +31,28 @@ export type EssayHistoryItem = {
   summary: string;
   wordCount: number;
   competencies: [number, number, number, number, number];
+  aiModel: string | null;
+  cacheSource: "fresh" | "duplicate_student" | "duplicate_global";
 };
 
 export type PersistedCorrectionResponse = CorrectionResult & {
   savedEssay?: EssayHistoryItem;
   usage?: UsageSnapshot;
+};
+
+export type StudentSummary = {
+  id: string;
+  fullName: string;
+  email: string | null;
+  schoolName: string | null;
+  classGroup: string | null;
+  role: "student" | "teacher" | "admin";
+  isActive: boolean;
+  essayCount: number;
+  averageScore: number | null;
+  bestScore: number | null;
+  latestScore: number | null;
+  latestEssayAt: string | null;
+  weeklySavedEssaysOverride: number | null;
+  weeklyCorrectionsOverride: number | null;
 };

@@ -1,9 +1,16 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { getUsageSnapshot, saveCorrectionResult } from "@/lib/essays";
 import type { UserProfile } from "@/lib/auth";
 import type { CorrectionResult } from "@/lib/essay-types";
+import { createClient } from "@/lib/supabase/server";
+import {
+  buildEssayHash,
+  findCachedCorrection,
+  getUsageSnapshot,
+  logUsageEvent,
+  saveCorrectionFromCache,
+  saveCorrectionResult,
+} from "@/lib/essays";
 
 async function getCurrentProfile() {
   const supabase = await createClient();
@@ -17,7 +24,9 @@ async function getCurrentProfile() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, is_active, school_name, class_group")
+    .select(
+      "id, email, full_name, role, is_active, school_name, class_group, weekly_saved_essays_override, weekly_corrections_override",
+    )
     .eq("id", session.user.id)
     .single();
 
@@ -58,6 +67,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const { texto, tema } = await request.json();
+    const normalizedTheme = String(tema ?? "").trim() || "Tema livre";
+    const normalizedText = String(texto ?? "").trim();
+    const contentHash = buildEssayHash(normalizedText, normalizedTheme);
+
     const usageBefore = await getUsageSnapshot(supabase, profile);
 
     if (
@@ -73,9 +87,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const { texto, tema } = await request.json();
-    const normalizedTheme = String(tema ?? "").trim() || "Tema livre";
-    const normalizedText = String(texto ?? "").trim();
+    await logUsageEvent({
+      supabase,
+      profileId: profile.id,
+      eventType: "correction_requested",
+      metadata: {
+        content_hash: contentHash,
+        theme: normalizedTheme,
+      },
+    });
 
     const numeroDePalavras = normalizedText.split(/\s+/).length;
     if (numeroDePalavras < 70) {
@@ -94,6 +114,108 @@ export async function POST(request: Request) {
         resumo_geral:
           "REDAÇÃO ANULADA: o texto apresenta menos de 70 palavras estimadas, o que configura insuficiência de texto segundo os critérios adotados nesta plataforma.",
         usage: usageBefore,
+      });
+    }
+
+    const cached = await findCachedCorrection(
+      supabase,
+      profile,
+      normalizedTheme,
+      contentHash,
+    );
+
+    if (cached) {
+      const savedEssay = await saveCorrectionFromCache({
+        supabase,
+        profile,
+        text: normalizedText,
+        theme: normalizedTheme,
+        contentHash,
+        cachedEssay: cached.cachedEssay,
+        cacheSource: cached.cacheSource,
+      });
+      const usageAfterCache = await getUsageSnapshot(supabase, profile);
+
+      return NextResponse.json({
+        ...{
+          competencia_1: {
+            nota:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_1_score ?? 0
+                : cached.cachedEssay.essay_scores?.competency_1_score ?? 0,
+            justificativa:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_1_justification ?? ""
+                : cached.cachedEssay.essay_scores?.competency_1_justification ?? "",
+            melhoria:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_1_improvement ?? ""
+                : cached.cachedEssay.essay_scores?.competency_1_improvement ?? "",
+          },
+          competencia_2: {
+            nota:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_2_score ?? 0
+                : cached.cachedEssay.essay_scores?.competency_2_score ?? 0,
+            justificativa:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_2_justification ?? ""
+                : cached.cachedEssay.essay_scores?.competency_2_justification ?? "",
+            melhoria:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_2_improvement ?? ""
+                : cached.cachedEssay.essay_scores?.competency_2_improvement ?? "",
+          },
+          competencia_3: {
+            nota:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_3_score ?? 0
+                : cached.cachedEssay.essay_scores?.competency_3_score ?? 0,
+            justificativa:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_3_justification ?? ""
+                : cached.cachedEssay.essay_scores?.competency_3_justification ?? "",
+            melhoria:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_3_improvement ?? ""
+                : cached.cachedEssay.essay_scores?.competency_3_improvement ?? "",
+          },
+          competencia_4: {
+            nota:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_4_score ?? 0
+                : cached.cachedEssay.essay_scores?.competency_4_score ?? 0,
+            justificativa:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_4_justification ?? ""
+                : cached.cachedEssay.essay_scores?.competency_4_justification ?? "",
+            melhoria:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_4_improvement ?? ""
+                : cached.cachedEssay.essay_scores?.competency_4_improvement ?? "",
+          },
+          competencia_5: {
+            nota:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_5_score ?? 0
+                : cached.cachedEssay.essay_scores?.competency_5_score ?? 0,
+            justificativa:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_5_justification ?? ""
+                : cached.cachedEssay.essay_scores?.competency_5_justification ?? "",
+            melhoria:
+              Array.isArray(cached.cachedEssay.essay_scores)
+                ? cached.cachedEssay.essay_scores[0]?.competency_5_improvement ?? ""
+                : cached.cachedEssay.essay_scores?.competency_5_improvement ?? "",
+          },
+          nota_final: cached.cachedEssay.final_score ?? 0,
+          resumo_geral:
+            (Array.isArray(cached.cachedEssay.essay_scores)
+              ? cached.cachedEssay.essay_scores[0]?.summary
+              : cached.cachedEssay.essay_scores?.summary) ?? "",
+        } satisfies CorrectionResult,
+        savedEssay,
+        usage: usageAfterCache,
       });
     }
 
@@ -154,6 +276,7 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
     ];
 
     let rawResponse = "";
+    let selectedModel: string | null = null;
     let sucesso = false;
 
     for (const key of chavesDisponiveis) {
@@ -168,6 +291,7 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
           const model = genAI.getGenerativeModel({ model: modelName });
           const result = await model.generateContent(promptMestre);
           rawResponse = result.response.text();
+          selectedModel = modelName;
           sucesso = true;
           break;
         } catch {
@@ -191,6 +315,10 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
       text: normalizedText,
       theme: normalizedTheme,
       result: avaliacao,
+      contentHash,
+      aiProvider: "google-gemini",
+      aiModel: selectedModel,
+      cacheSource: "fresh",
     });
     const usageAfter = await getUsageSnapshot(supabase, profile);
 
