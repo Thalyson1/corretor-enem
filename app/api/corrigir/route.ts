@@ -24,7 +24,7 @@ const GEMINI_MODELOS_PARA_TESTAR = [
   "gemini-3-flash",
   "gemini-2.5-flash",
 ] as const;
-const OPENAI_MODELOS_PARA_TESTAR = ["gpt-4.1-mini"] as const;
+const OPENAI_MODELOS_PARA_TESTAR = ["gpt-4.1-mini", "gpt-4o-mini"] as const;
 
 async function getCurrentProfile() {
   const supabase = await createClient();
@@ -740,6 +740,19 @@ function parseCorrectionResponse(rawResponse: string) {
   return JSON.parse(jsonString) as CorrectionResult;
 }
 
+function isKnownProviderFailure(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return [
+    "No momento atingimos o limite de correções. Tente novamente mais tarde.",
+    "OpenAI fallback unavailable.",
+    "A IA retornou uma resposta fora do formato esperado.",
+    "A OpenAI retornou uma resposta vazia.",
+  ].includes(error.message);
+}
+
 async function corrigirComFallback(
   prompt: string,
   chavesDisponiveis: string[],
@@ -1163,11 +1176,13 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
   } catch (error) {
     console.error("corrigir route failed", error);
 
-    if (
-      error instanceof Error &&
-      error.message === "No momento atingimos o limite de correções. Tente novamente mais tarde."
-    ) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
+    if (isKnownProviderFailure(error)) {
+      return NextResponse.json(
+        {
+          error: "No momento atingimos o limite de correções. Tente novamente mais tarde.",
+        },
+        { status: 503 },
+      );
     }
 
     return NextResponse.json(
