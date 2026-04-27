@@ -570,6 +570,31 @@ export function GraderClient({
       </div>
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-600">
+              Nova correção
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900">
+              Envie sua redação para análise
+            </h2>
+            <p className="max-w-2xl text-sm leading-6 text-slate-500">
+              Preencha o tema, cole seu texto e receba nota, diagnóstico e próximos passos em poucos instantes.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+              Feedback por competência
+            </span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+              Plano de melhoria
+            </span>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+              Reescrita melhorada
+            </span>
+          </div>
+        </div>
+
         <div className="mb-8 space-y-6">
           <div className="space-y-2">
             <label
@@ -628,7 +653,17 @@ export function GraderClient({
           disabled={loading || saving}
         />
 
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+          <div className="mb-4">
+            <div className="text-sm font-semibold text-slate-900">
+              Ações da correção
+            </div>
+            <p className="text-sm text-slate-500">
+              Corrija primeiro. Depois, se quiser, salve no histórico ou gere uma versão melhorada.
+            </p>
+          </div>
+
+          <div className="space-y-4">
           <button
             onClick={corrigirRedacao}
             disabled={loading || saving}
@@ -674,6 +709,7 @@ export function GraderClient({
               {rewriteLoading ? "Gerando versÃ£o melhorada..." : "Gerar versÃ£o melhorada"}
             </button>
           ) : null}
+          </div>
         </div>
 
         {aviso ? (
