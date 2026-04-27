@@ -10,6 +10,17 @@ export type RewriteSuggestion = {
   motivo: string;
 };
 
+export type EssayComparison = {
+  previousEssayId: string;
+  previousFinalScore: number;
+  currentFinalScore: number;
+  finalScoreDiff: number;
+  previousCompetencies: [number, number, number, number, number];
+  currentCompetencies: [number, number, number, number, number];
+  competencyDiffs: [number, number, number, number, number];
+  summary: string;
+};
+
 export type CorrectionResult = {
   competencia_1?: CompetencyResult;
   competencia_2?: CompetencyResult;
@@ -19,6 +30,7 @@ export type CorrectionResult = {
   nota_final?: number;
   resumo_geral?: string;
   sugestoes_reescrita?: RewriteSuggestion[];
+  comparacao?: EssayComparison;
   error?: string;
 };
 

@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   buildEssayHash,
   findCachedCorrection,
+  getLatestEssayComparison,
   getUsageSnapshot,
   logUsageEvent,
   saveCorrectionFromCache,
@@ -544,6 +545,15 @@ export async function POST(request: Request) {
         cachedCorrection.result,
         normalizedText,
       );
+      const cachedComparison = await getLatestEssayComparison(
+        supabase,
+        profile,
+        normalizedTheme,
+        processedCached,
+      );
+      if (cachedComparison) {
+        processedCached.comparacao = cachedComparison;
+      }
 
       return NextResponse.json(
         buildCorrectionPayload(
@@ -698,6 +708,15 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
     const jsonString = rawResponse.substring(startIdx, endIdx);
     const avaliacao = JSON.parse(jsonString) as CorrectionResult;
     const processedEvaluation = postProcessEvaluation(avaliacao, normalizedText);
+    const comparison = await getLatestEssayComparison(
+      supabase,
+      profile,
+      normalizedTheme,
+      processedEvaluation,
+    );
+    if (comparison) {
+      processedEvaluation.comparacao = comparison;
+    }
 
     await logUsageEvent({
       supabase,

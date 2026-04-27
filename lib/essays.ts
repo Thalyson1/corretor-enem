@@ -6,6 +6,7 @@ import type { UserProfile } from "@/lib/auth";
 import type {
   CacheSource,
   CorrectionResult,
+  EssayComparison,
   EssayHistoryItem,
   StudentSummary,
   UsageSnapshot,
@@ -199,6 +200,61 @@ function normalizeEssayRow(row: EssayRow): EssayHistoryItem | null {
   };
 }
 
+function getCompetenciesFromResult(
+  result: CorrectionResult,
+): [number, number, number, number, number] {
+  return [
+    result.competencia_1?.nota ?? 0,
+    result.competencia_2?.nota ?? 0,
+    result.competencia_3?.nota ?? 0,
+    result.competencia_4?.nota ?? 0,
+    result.competencia_5?.nota ?? 0,
+  ];
+}
+
+function buildComparisonSummary(
+  finalScoreDiff: number,
+  competencyDiffs: [number, number, number, number, number],
+) {
+  const improvementLabels = competencyDiffs
+    .map((diff, index) => ({ diff, label: `Competência ${index + 1}` }))
+    .filter((item) => item.diff > 0)
+    .sort((left, right) => right.diff - left.diff)
+    .map((item) => item.label);
+
+  const declineLabels = competencyDiffs
+    .map((diff, index) => ({ diff, label: `Competência ${index + 1}` }))
+    .filter((item) => item.diff < 0)
+    .sort((left, right) => left.diff - right.diff)
+    .map((item) => item.label);
+
+  const stableLabels = competencyDiffs
+    .map((diff, index) => ({ diff, label: `Competência ${index + 1}` }))
+    .filter((item) => item.diff === 0)
+    .map((item) => item.label);
+
+  const opening =
+    finalScoreDiff > 0
+      ? `Você evoluiu ${finalScoreDiff} pontos em relação à última versão salva deste tema.`
+      : finalScoreDiff < 0
+        ? `Sua nota atual ficou ${Math.abs(finalScoreDiff)} pontos abaixo da última versão salva deste tema.`
+        : "Sua nota final ficou no mesmo nível da última versão salva deste tema.";
+
+  const strengths =
+    improvementLabels.length > 0
+      ? `As maiores melhorias apareceram em ${improvementLabels.join(", ")}.`
+      : "Não houve ganho claro de pontuação nas competências.";
+
+  const nextStep =
+    declineLabels.length > 0
+      ? `Ainda vale reforçar ${declineLabels.join(", ")} para recuperar consistência.`
+      : stableLabels.length > 0
+        ? `O próximo passo é destravar ganhos em ${stableLabels.join(", ")}.`
+        : "Você conseguiu avançar sem perdas nas demais competências.";
+
+  return `${opening} ${strengths} ${nextStep}`;
+}
+
 function getCorrectionResultFromCachedEssay(
   row: CachedEssayRow,
 ): CorrectionResult | null {
@@ -321,6 +377,70 @@ export async function getEssayHistory(
   return ((data ?? []) as EssayRow[])
     .map(normalizeEssayRow)
     .filter((essay): essay is EssayHistoryItem => essay !== null);
+}
+
+export async function getLatestEssayComparison(
+  supabase: DatabaseClient,
+  profile: UserProfile,
+  theme: string,
+  currentResult: CorrectionResult,
+): Promise<EssayComparison | null> {
+  const { data, error } = await supabase
+    .from("essays")
+    .select(
+      `
+      id,
+      theme,
+      final_score,
+      submitted_at,
+      corrected_at,
+      word_count,
+      ai_model,
+      cache_source,
+      essay_scores (
+        summary,
+        competency_1_score,
+        competency_2_score,
+        competency_3_score,
+        competency_4_score,
+        competency_5_score
+      )
+    `,
+    )
+    .eq("student_id", profile.id)
+    .eq("theme", theme)
+    .eq("status", "corrected")
+    .order("submitted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Não foi possível carregar a versão anterior desta redação.");
+  }
+
+  const previousEssay = data ? normalizeEssayRow(data as EssayRow) : null;
+
+  if (!previousEssay || currentResult.nota_final === undefined) {
+    return null;
+  }
+
+  const currentCompetencies = getCompetenciesFromResult(currentResult);
+  const previousCompetencies = previousEssay.competencies;
+  const competencyDiffs = currentCompetencies.map(
+    (score, index) => score - previousCompetencies[index],
+  ) as [number, number, number, number, number];
+  const finalScoreDiff = currentResult.nota_final - previousEssay.finalScore;
+
+  return {
+    previousEssayId: previousEssay.id,
+    previousFinalScore: previousEssay.finalScore,
+    currentFinalScore: currentResult.nota_final,
+    finalScoreDiff,
+    previousCompetencies,
+    currentCompetencies,
+    competencyDiffs,
+    summary: buildComparisonSummary(finalScoreDiff, competencyDiffs),
+  };
 }
 
 export async function getUserRoster(

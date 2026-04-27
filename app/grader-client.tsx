@@ -25,6 +25,14 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function formatDiff(value: number) {
+  if (value > 0) {
+    return `+${value}`;
+  }
+
+  return `${value}`;
+}
+
 function getCorrectionLabel(role: GraderClientProps["currentRole"]) {
   if (role === "teacher") {
     return "Correções da conta nesta semana";
@@ -605,6 +613,92 @@ export function GraderClient({
                       );
                     })}
                   </div>
+
+                  {resultado.comparacao ? (() => {
+                    const comparacao = resultado.comparacao;
+
+                    return (
+                    <div className="mt-8 border-t border-slate-200 pt-8">
+                      <h3 className="mb-4 text-2xl font-bold text-slate-800">
+                        Comparação com a versão anterior
+                      </h3>
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                          <div className="text-sm font-semibold text-slate-500">
+                            Nota anterior
+                          </div>
+                          <div className="mt-2 text-3xl font-black text-slate-900">
+                            {comparacao.previousFinalScore}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                          <div className="text-sm font-semibold text-slate-500">
+                            Nota atual
+                          </div>
+                          <div className="mt-2 text-3xl font-black text-slate-900">
+                            {comparacao.currentFinalScore}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                          <div className="text-sm font-semibold text-slate-500">
+                            Variação
+                          </div>
+                          <div
+                            className={`mt-2 text-3xl font-black ${
+                              comparacao.finalScoreDiff > 0
+                                ? "text-emerald-700"
+                                : comparacao.finalScoreDiff < 0
+                                  ? "text-rose-700"
+                                  : "text-slate-900"
+                            }`}
+                          >
+                            {formatDiff(comparacao.finalScoreDiff)} pontos
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <div className="mb-3 text-sm font-semibold text-slate-700">
+                          Evolução por competência
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                          {comparacao.competencyDiffs.map((diff, index) => (
+                            <div
+                              key={`comparison-${index + 1}`}
+                              className="rounded-xl border border-slate-200 bg-white p-4"
+                            >
+                              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                C{index + 1}
+                              </div>
+                              <div className="mt-2 text-sm text-slate-600">
+                                {comparacao.previousCompetencies[index]} →{" "}
+                                {comparacao.currentCompetencies[index]}
+                              </div>
+                              <div
+                                className={`mt-2 text-lg font-bold ${
+                                  diff > 0
+                                    ? "text-emerald-700"
+                                    : diff < 0
+                                      ? "text-rose-700"
+                                      : "text-slate-700"
+                                }`}
+                              >
+                                {formatDiff(diff)} pts
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-5 text-sm leading-7 text-slate-700">
+                        <span className="font-semibold text-slate-900">
+                          Resumo da evolução:
+                        </span>{" "}
+                        {comparacao.summary}
+                      </div>
+                    </div>
+                    );
+                  })() : null}
 
                   {resultado.sugestoes_reescrita && resultado.sugestoes_reescrita.length > 0 ? (
                     <div className="mt-8 border-t border-slate-200 pt-8">
