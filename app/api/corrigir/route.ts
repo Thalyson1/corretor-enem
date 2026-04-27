@@ -19,9 +19,8 @@ import {
 
 const SCORE_STEPS = [0, 40, 80, 120, 160, 200] as const;
 const GEMINI_MODELOS_PARA_TESTAR = [
-  "gemini-3.1-flash-lite",
+  "gemini-3.1-flash-lite-preview",
   "gemini-2.5-flash-lite",
-  "gemini-3-flash",
   "gemini-2.5-flash",
 ] as const;
 const OPENAI_MODELOS_PARA_TESTAR = ["gpt-4.1-mini", "gpt-4o-mini"] as const;
@@ -639,6 +638,12 @@ function isRetryableGeminiError(error: unknown) {
   }
 
   return [
+    "404",
+    "not found",
+    "model not found",
+    "requested entity was not found",
+    "is not found for api version",
+    "is not supported for generatecontent",
     "rate limit",
     "quota",
     "resource exhausted",
@@ -733,11 +738,26 @@ function parseCorrectionResponse(rawResponse: string) {
   const endIdx = rawResponse.lastIndexOf("}") + 1;
 
   if (startIdx < 0 || endIdx <= startIdx) {
+    console.error("Correction response parsing failed", {
+      startIdx,
+      endIdx,
+      rawPreview: rawResponse.slice(0, 1200),
+    });
     throw new Error("A IA retornou uma resposta fora do formato esperado.");
   }
 
   const jsonString = rawResponse.substring(startIdx, endIdx);
-  return JSON.parse(jsonString) as CorrectionResult;
+  try {
+    return JSON.parse(jsonString) as CorrectionResult;
+  } catch (error) {
+    console.error("Correction JSON parse failed", {
+      parseError: error instanceof Error ? error.message : String(error),
+      jsonPreview: jsonString.slice(0, 1200),
+    });
+    throw new Error("A IA retornou um JSON inválido.", {
+      cause: error instanceof Error ? error : undefined,
+    });
+  }
 }
 
 function isKnownProviderFailure(error: unknown) {
@@ -749,7 +769,9 @@ function isKnownProviderFailure(error: unknown) {
     "No momento atingimos o limite de correções. Tente novamente mais tarde.",
     "OpenAI fallback unavailable.",
     "A IA retornou uma resposta fora do formato esperado.",
+    "A IA retornou um JSON inválido.",
     "A OpenAI retornou uma resposta vazia.",
+    "A OpenAI retornou uma resposta não-JSON.",
   ].includes(error.message);
 }
 
@@ -773,6 +795,41 @@ function buildErrorLog(error: unknown): Record<string, unknown> {
   };
 }
 
+function getErrorDetails(error: unknown) {
+  if (!(error instanceof Error)) {
+    return { message: String(error), raw: error };
+  }
+
+  const status =
+    typeof error === "object" && error !== null ? Reflect.get(error, "status") : undefined;
+  const code =
+    typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+  const responseBody =
+    typeof error === "object" && error !== null ? Reflect.get(error, "responseBody") : undefined;
+
+  return {
+    name: error.name,
+    message: error.message,
+    status,
+    code,
+    responseBody,
+  };
+}
+
+function parseJsonSafely(rawText: string) {
+  try {
+    return {
+      data: JSON.parse(rawText) as unknown,
+      parseError: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      parseError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function corrigirComFallback(
   prompt: string,
   chavesDisponiveis: string[],
@@ -783,6 +840,11 @@ async function corrigirComFallback(
     const genAI = new GoogleGenerativeAI(key);
 
     for (const modelName of GEMINI_MODELOS_PARA_TESTAR) {
+      console.info("Gemini correction attempt started", {
+        model: modelName,
+        apiKeyConfigured: Boolean(key),
+      });
+
       try {
         const model = genAI.getGenerativeModel({ model: modelName });
         const result = await model.generateContent(prompt);
@@ -799,12 +861,13 @@ async function corrigirComFallback(
         const retryable =
           isRetryableGeminiError(error) ||
           (error instanceof Error &&
-            error.message === "A IA retornou uma resposta fora do formato esperado.");
+            (error.message === "A IA retornou uma resposta fora do formato esperado." ||
+              error.message === "A IA retornou um JSON inválido."));
 
         console.warn("Gemini correction attempt failed", {
           model: modelName,
           retryable,
-          error,
+          ...getErrorDetails(error),
         });
 
         if (!retryable) {
@@ -828,6 +891,11 @@ async function corrigirComOpenAI(prompt: string, apiKey: string) {
   let lastRetryableError: unknown = null;
 
   for (const modelName of OPENAI_MODELOS_PARA_TESTAR) {
+    console.info("OpenAI correction attempt started", {
+      model: modelName,
+      apiKeyConfigured: Boolean(apiKey),
+    });
+
     try {
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -846,7 +914,18 @@ async function corrigirComOpenAI(prompt: string, apiKey: string) {
         }),
       });
 
-      const data = (await response.json()) as unknown;
+      const responseText = await response.text();
+      const { data, parseError } = parseJsonSafely(responseText);
+
+      if (parseError) {
+        console.error("OpenAI response parse failed", {
+          model: modelName,
+          status: response.status,
+          parseError,
+          rawBody: responseText.slice(0, 1200),
+        });
+        throw new Error("A OpenAI retornou uma resposta não-JSON.");
+      }
 
       if (!response.ok) {
         const message =
@@ -861,7 +940,10 @@ async function corrigirComOpenAI(prompt: string, apiKey: string) {
                 ) ?? `OpenAI request failed with status ${response.status}`,
               )
             : `OpenAI request failed with status ${response.status}`;
-        const error = Object.assign(new Error(message), { status: response.status });
+        const error = Object.assign(new Error(message), {
+          status: response.status,
+          responseBody: responseText.slice(0, 1200),
+        });
 
         if (!isRetryableOpenAIError(error)) {
           throw error;
@@ -870,7 +952,7 @@ async function corrigirComOpenAI(prompt: string, apiKey: string) {
         console.warn("OpenAI correction attempt failed", {
           model: modelName,
           retryable: true,
-          error,
+          ...getErrorDetails(error),
         });
 
         lastRetryableError = error;
@@ -896,12 +978,13 @@ async function corrigirComOpenAI(prompt: string, apiKey: string) {
         isRetryableOpenAIError(error) ||
         (error instanceof Error &&
           (error.message === "A IA retornou uma resposta fora do formato esperado." ||
+            error.message === "A IA retornou um JSON inválido." ||
             error.message === "A OpenAI retornou uma resposta vazia."));
 
       console.warn("OpenAI correction attempt failed", {
         model: modelName,
         retryable,
-        error,
+        ...getErrorDetails(error),
       });
 
       if (!retryable) {
@@ -1068,6 +1151,11 @@ export async function POST(request: Request) {
       process.env.GEMINI_API_KEY_3,
     ].filter(Boolean);
     const openAiApiKey = process.env.OPENAI_API_KEY;
+
+    console.info("Correction provider configuration", {
+      geminiKeysConfigured: chavesDisponiveis.length,
+      openAiConfigured: Boolean(openAiApiKey),
+    });
 
     if (chavesDisponiveis.length === 0 && !openAiApiKey) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
