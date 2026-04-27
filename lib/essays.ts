@@ -97,10 +97,30 @@ type ProfileListRow = {
   is_active: boolean;
   weekly_saved_essays_override: number | null;
   weekly_corrections_override: number | null;
-  essays:
+};
+
+type EssayStatsRow = {
+  student_id: string;
+  final_score: number | null;
+  submitted_at: string;
+};
+
+type TeacherFeedRow = {
+  id: string;
+  student_id: string;
+  theme: string;
+  final_score: number | null;
+  submitted_at: string;
+  corrected_at: string | null;
+  word_count: number;
+  ai_model: string | null;
+  cache_source: "fresh" | "duplicate_student" | "duplicate_global";
+  essay_scores:
     | {
-        final_score: number | null;
-        submitted_at: string;
+        summary: string | null;
+      }
+    | {
+        summary: string | null;
       }[]
     | null;
 };
@@ -177,8 +197,11 @@ function normalizeEssayRow(row: EssayRow): EssayHistoryItem | null {
   };
 }
 
-function getCorrectionResultFromCachedEssay(row: CachedEssayRow): CorrectionResult | null {
-  const score = Array.isArray(row.essay_scores) ? row.essay_scores[0] : row.essay_scores;
+function getCorrectionResultFromCachedEssay(
+  row: CachedEssayRow,
+): CorrectionResult | null {
+  const score =
+    Array.isArray(row.essay_scores) ? row.essay_scores[0] : row.essay_scores;
 
   if (!score || row.final_score === null) {
     return null;
@@ -221,26 +244,29 @@ export async function getUsageSnapshot(
 ): Promise<UsageSnapshot> {
   const weekStart = getStartOfWeekInSaoPaulo();
 
-  const [{ data: limitRow, error: limitError }, { count: correctionsUsed }, { count: savedEssaysUsed }] =
-    await Promise.all([
-      supabase
-        .from("usage_limits")
-        .select("weekly_corrections, weekly_saved_essays")
-        .eq("role", profile.role)
-        .single(),
-      supabase
-        .from("usage_events")
-        .select("*", { count: "exact", head: true })
-        .eq("profile_id", profile.id)
-        .eq("event_type", "correction_saved")
-        .eq("week_start", weekStart),
-      supabase
-        .from("usage_events")
-        .select("*", { count: "exact", head: true })
-        .eq("profile_id", profile.id)
-        .eq("event_type", "essay_saved")
-        .eq("week_start", weekStart),
-    ]);
+  const [
+    { data: limitRow, error: limitError },
+    { count: correctionsUsed },
+    { count: savedEssaysUsed },
+  ] = await Promise.all([
+    supabase
+      .from("usage_limits")
+      .select("weekly_corrections, weekly_saved_essays")
+      .eq("role", profile.role)
+      .single(),
+    supabase
+      .from("usage_events")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", profile.id)
+      .eq("event_type", "correction_saved")
+      .eq("week_start", weekStart),
+    supabase
+      .from("usage_events")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", profile.id)
+      .eq("event_type", "essay_saved")
+      .eq("week_start", weekStart),
+  ]);
 
   if (limitError || !limitRow) {
     throw new Error("Não foi possível carregar os limites de uso.");
@@ -315,11 +341,7 @@ export async function getUserRoster(
       role,
       is_active,
       weekly_saved_essays_override,
-      weekly_corrections_override,
-      essays (
-        final_score,
-        submitted_at
-      )
+      weekly_corrections_override
     `,
     )
     .order("full_name", { ascending: true });
@@ -338,8 +360,31 @@ export async function getUserRoster(
     throw new Error("Não foi possível carregar os usuários.");
   }
 
-  return ((data ?? []) as ProfileListRow[]).map((row) => {
-    const essays = (row.essays ?? []).filter(
+  const profiles = (data ?? []) as ProfileListRow[];
+  const profileIds = profiles.map((profile) => profile.id);
+
+  const essayMap = new Map<string, EssayStatsRow[]>();
+
+  if (profileIds.length > 0) {
+    const { data: essayRows, error: essaysError } = await supabase
+      .from("essays")
+      .select("student_id, final_score, submitted_at")
+      .in("student_id", profileIds)
+      .eq("status", "corrected");
+
+    if (essaysError) {
+      throw new Error("Não foi possível carregar as redações dos usuários.");
+    }
+
+    for (const essay of (essayRows ?? []) as EssayStatsRow[]) {
+      const current = essayMap.get(essay.student_id) ?? [];
+      current.push(essay);
+      essayMap.set(essay.student_id, current);
+    }
+  }
+
+  return profiles.map((row) => {
+    const essays = (essayMap.get(row.id) ?? []).filter(
       (essay) => essay.final_score !== null,
     );
     const scores = essays
@@ -362,7 +407,9 @@ export async function getUserRoster(
       essayCount: scores.length,
       averageScore:
         scores.length > 0
-          ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+          ? Math.round(
+              scores.reduce((sum, score) => sum + score, 0) / scores.length,
+            )
           : null,
       bestScore: scores.length > 0 ? Math.max(...scores) : null,
       latestScore: latestEssay?.final_score ?? null,
@@ -379,11 +426,12 @@ export async function getTeacherEssayFeed(
     classGroup?: string;
   },
 ) {
-  const query = supabase
+  const { data, error } = await supabase
     .from("essays")
     .select(
       `
       id,
+      student_id,
       theme,
       final_score,
       submitted_at,
@@ -391,19 +439,8 @@ export async function getTeacherEssayFeed(
       word_count,
       ai_model,
       cache_source,
-      profiles!essays_student_id_fkey (
-        id,
-        full_name,
-        email,
-        class_group
-      ),
       essay_scores (
-        summary,
-        competency_1_score,
-        competency_2_score,
-        competency_3_score,
-        competency_4_score,
-        competency_5_score
+        summary
       )
     `,
     )
@@ -411,37 +448,67 @@ export async function getTeacherEssayFeed(
     .order("submitted_at", { ascending: false })
     .limit(30);
 
-  const { data, error } = await query;
-
   if (error) {
     throw new Error("Não foi possível carregar as redações da turma.");
   }
 
-  return (data ?? [])
+  const essays = (data ?? []) as TeacherFeedRow[];
+  const studentIds = Array.from(new Set(essays.map((essay) => essay.student_id)));
+
+  let profileMap = new Map<
+    string,
+    {
+      id: string;
+      fullName: string;
+      email: string | null;
+      classGroup: string | null;
+    }
+  >();
+
+  if (studentIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, class_group")
+      .in("id", studentIds);
+
+    if (profilesError) {
+      throw new Error("Não foi possível carregar os perfis dos alunos.");
+    }
+
+    profileMap = new Map(
+      (profiles ?? []).map((profile) => [
+        profile.id as string,
+        {
+          id: profile.id as string,
+          fullName: (profile.full_name as string | null) ?? "Sem nome",
+          email: (profile.email as string | null) ?? null,
+          classGroup: (profile.class_group as string | null) ?? null,
+        },
+      ]),
+    );
+  }
+
+  return essays
     .map((row) => ({
-      id: row.id as string,
-      theme: row.theme as string,
-      finalScore: row.final_score as number | null,
-      submittedAt: row.submitted_at as string,
-      correctedAt: row.corrected_at as string | null,
-      wordCount: row.word_count as number,
-      aiModel: row.ai_model as string | null,
-      cacheSource: row.cache_source as "fresh" | "duplicate_student" | "duplicate_global",
+      id: row.id,
+      theme: row.theme,
+      finalScore: row.final_score,
+      submittedAt: row.submitted_at,
+      correctedAt: row.corrected_at,
+      wordCount: row.word_count,
+      aiModel: row.ai_model,
+      cacheSource: row.cache_source,
       summary:
-        ((Array.isArray(row.essay_scores) ? row.essay_scores[0] : row.essay_scores)
-          ?.summary as string | null) ?? "",
-      student: {
-        id: (Array.isArray(row.profiles) ? row.profiles[0] : row.profiles)?.id as string,
-        fullName:
-          ((Array.isArray(row.profiles) ? row.profiles[0] : row.profiles)?.full_name as string | null) ??
-          "Sem nome",
-        email:
-          ((Array.isArray(row.profiles) ? row.profiles[0] : row.profiles)?.email as string | null) ??
-          null,
-        classGroup:
-          ((Array.isArray(row.profiles) ? row.profiles[0] : row.profiles)?.class_group as string | null) ??
-          null,
-      },
+        (Array.isArray(row.essay_scores)
+          ? row.essay_scores[0]?.summary
+          : row.essay_scores?.summary) ?? "",
+      student:
+        profileMap.get(row.student_id) ?? {
+          id: row.student_id,
+          fullName: "Sem nome",
+          email: null,
+          classGroup: null,
+        },
     }))
     .filter((essay) =>
       options?.classGroup ? essay.student.classGroup === options.classGroup : true,
@@ -451,11 +518,16 @@ export async function getTeacherEssayFeed(
 export async function logUsageEvent(params: {
   supabase: DatabaseClient;
   profileId: string;
-  eventType: "correction_requested" | "correction_saved" | "essay_saved" | "essay_deleted";
+  eventType:
+    | "correction_requested"
+    | "correction_saved"
+    | "essay_saved"
+    | "essay_deleted";
   essayId?: string | null;
   metadata?: Record<string, unknown>;
 }) {
-  const { supabase, profileId, eventType, essayId = null, metadata = {} } = params;
+  const { supabase, profileId, eventType, essayId = null, metadata = {} } =
+    params;
   const weekStart = getStartOfWeekInSaoPaulo();
 
   await supabase.from("usage_events").insert({
@@ -495,8 +567,7 @@ export async function findCachedCorrection(
       competency_4_improvement,
       competency_5_score,
       competency_5_justification,
-      competency_5_improvement,
-      summary
+      competency_5_improvement
     )
   `;
 
