@@ -283,7 +283,7 @@ function analyzeEssaySignals(text: string) {
 
   return {
     hasConcreteData: concreteDataCount >= 2,
-    hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 3,
+    hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 2,
     hasGenericRepertoire: genericRepertoireCount >= 2,
     hasGenericArgumentation: genericArgumentCount >= 3,
     hasSophisticatedLanguage:
@@ -295,7 +295,7 @@ function analyzeEssaySignals(text: string) {
     hasRepetitionProblem: repetitionCount >= 2,
     hasSevereDevelopmentIssue: genericArgumentCount >= 4 || repetitionCount >= 4,
     hasExceptionalLanguage:
-      lexicalVariety >= 0.6 && averageWordLength >= 5 && connectorCount >= 5,
+      lexicalVariety >= 0.55 && averageWordLength >= 4.8 && connectorCount >= 4,
     hasExceptionalArgumentation:
       !genericArgumentCount && repetitionCount === 0 && connectorCount >= 4,
     hasExceptionalCohesion: connectorCount >= 5 && repetitionCount === 0,
@@ -330,7 +330,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     "Use dados concretos, leis, pesquisas, fatos históricos delimitados ou referências diretamente ligadas ao tema e explique a conexão com a tese.",
   );
 
-  if (!signals.hasConcreteData) {
+  if (!signals.hasConcreteData && signals.hasGenericRepertoire) {
     applyPenalty(
       processed,
       "competencia_2",
@@ -712,16 +712,15 @@ REGRA CENTRAL DE RIGOR:
 
 CRITÉRIOS PARA 200:
 1. Competência 1:
-- só dê 200 se a linguagem for sofisticada, variada, precisa e formal;
-- só dê 200 se houver variação lexical rica e estruturas sintáticas complexas;
-- não pode haver construções pobres, repetitivas ou pouco refinadas;
-- se a linguagem apenas estiver correta, mas não sofisticada, use no máximo 160.
+- dê 200 quando houver domínio completo da norma padrão, boa variação lexical e estruturas sintáticas complexas;
+- não exija sofisticação extrema para a nota máxima;
+- só reduza abaixo de 200 se houver limitação perceptível de variação, clareza ou domínio formal.
 
 2. Competência 2:
-- só dê 200 se o repertório for específico, aprofundado, produtivo e diretamente relacionado ao tema;
-- é necessário explicar claramente como o repertório sustenta a tese;
-- repertório genérico, decorativo ou pouco aprofundado deve ficar em 120 ou 160;
-- se faltar dado concreto, exemplo verificável, referência social/histórica bem delimitada ou análise consistente, use no máximo 160.
+- dê 200 quando o repertório for pertinente, bem explicado e articulado com a tese;
+- não exija estatísticas, leis ou dados numéricos para a nota máxima;
+- repertório genérico, decorativo ou pouco aprofundado deve ficar em 160;
+- só use faixa inferior se houver fragilidade clara de pertinência ou explicação.
 
 3. Competência 3:
 - só dê 200 se a argumentação for crítica, densa e não genérica;
@@ -739,7 +738,7 @@ CRITÉRIOS PARA 200:
 - a intervenção precisa apresentar agente, ação, meio/modo, efeito e detalhamento consistente.
 
 PENALIZAÇÕES OBRIGATÓRIAS:
-- ausência de dados concretos ou repertório forte: limite C2 em 160;
+- ausência de repertório pertinente ou explicação frágil: limite C2 em 160;
 - argumentação genérica ou superficial: reduza C3;
 - repetição de ideias: reduza C3 e/ou C4;
 - linguagem apenas correta, mas sem sofisticação: limite C1 em 160;
