@@ -18,6 +18,12 @@ import {
 } from "@/lib/essays";
 
 const SCORE_STEPS = [0, 40, 80, 120, 160, 200] as const;
+const GEMINI_MODELOS_PARA_TESTAR = [
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash-lite",
+  "gemini-3-flash",
+  "gemini-2.5-flash",
+] as const;
 
 async function getCurrentProfile() {
   const supabase = await createClient();
@@ -619,6 +625,85 @@ function safePostProcessEvaluation(result: CorrectionResult, essayText: string) 
   }
 }
 
+function isRetryableGeminiError(error: unknown) {
+  const status = typeof error === "object" && error !== null ? Reflect.get(error, "status") : null;
+  const message =
+    typeof error === "object" && error !== null
+      ? String(Reflect.get(error, "message") ?? "")
+      : String(error ?? "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  return [
+    "rate limit",
+    "quota",
+    "resource exhausted",
+    "too many requests",
+    "overload",
+    "overloaded",
+    "timeout",
+    "timed out",
+    "deadline exceeded",
+    "service unavailable",
+    "unavailable",
+    "temporarily unavailable",
+    "try again later",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+  ].some((term) => normalizedMessage.includes(term));
+}
+
+async function corrigirComFallback(
+  prompt: string,
+  chavesDisponiveis: string[],
+) {
+  let lastRetryableError: unknown = null;
+
+  for (const key of chavesDisponiveis) {
+    const genAI = new GoogleGenerativeAI(key);
+
+    for (const modelName of GEMINI_MODELOS_PARA_TESTAR) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const rawResponse = result.response.text();
+
+        console.info("Gemini correction model selected", { model: modelName });
+
+        return {
+          rawResponse,
+          selectedModel: modelName,
+        };
+      } catch (error) {
+        const retryable = isRetryableGeminiError(error);
+
+        console.warn("Gemini correction attempt failed", {
+          model: modelName,
+          retryable,
+          error,
+        });
+
+        if (!retryable) {
+          throw error;
+        }
+
+        lastRetryableError = error;
+      }
+    }
+  }
+
+  throw new Error(
+    "No momento atingimos o limite de correções. Tente novamente mais tarde.",
+    {
+      cause: lastRetryableError ?? undefined,
+    },
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const { supabase, session, profile } = await getCurrentProfile();
@@ -838,40 +923,10 @@ SAÍDA:
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
-    const modelosParaTestar = [
-      "gemini-2.5-pro",
-      "gemini-2.5-flash",
-      "gemini-2.0-flash",
-    ];
-
-    let rawResponse = "";
-    let selectedModel: string | null = null;
-    let sucesso = false;
-
-    for (const key of chavesDisponiveis) {
-      if (sucesso) {
-        break;
-      }
-
-      const genAI = new GoogleGenerativeAI(key as string);
-
-      for (const modelName of modelosParaTestar) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const result = await model.generateContent(promptMestre);
-          rawResponse = result.response.text();
-          selectedModel = modelName;
-          sucesso = true;
-          break;
-        } catch {
-          continue;
-        }
-      }
-    }
-
-    if (!sucesso) {
-      throw new Error("Limite de API excedido em todas as chaves.");
-    }
+    const { rawResponse, selectedModel } = await corrigirComFallback(
+      promptMestre,
+      chavesDisponiveis as string[],
+    );
 
     const startIdx = rawResponse.indexOf("{");
     const endIdx = rawResponse.lastIndexOf("}") + 1;
@@ -912,6 +967,14 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
     );
   } catch (error) {
     console.error("corrigir route failed", error);
+
+    if (
+      error instanceof Error &&
+      error.message === "No momento atingimos o limite de correções. Tente novamente mais tarde."
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
+
     return NextResponse.json(
       { error: "Ocorreu um erro ao processar sua nota. Tente novamente em 2 minutos." },
       { status: 500 },
