@@ -18,6 +18,12 @@ import {
 } from "@/lib/essays";
 
 const SCORE_STEPS = [0, 40, 80, 120, 160, 200] as const;
+const GEMINI_MODELOS_PARA_TESTAR = [
+  "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+] as const;
+const OPENAI_MODELOS_PARA_TESTAR = ["gpt-4.1-mini", "gpt-4o-mini"] as const;
 
 async function getCurrentProfile() {
   const supabase = await createClient();
@@ -163,6 +169,27 @@ function getPenaltyCount(result: CorrectionResult) {
   ).length;
 }
 
+function getLowScoreCount(result: CorrectionResult) {
+  const components = [
+    result.competencia_1,
+    result.competencia_2,
+    result.competencia_3,
+    result.competencia_4,
+    result.competencia_5,
+  ];
+
+  return components.filter((component) => (component?.nota ?? 0) <= 120).length;
+}
+
+function recalculateFinalScore(result: CorrectionResult) {
+  result.nota_final =
+    (result.competencia_1?.nota ?? 0) +
+    (result.competencia_2?.nota ?? 0) +
+    (result.competencia_3?.nota ?? 0) +
+    (result.competencia_4?.nota ?? 0) +
+    (result.competencia_5?.nota ?? 0);
+}
+
 function tokenizeWords(text: string) {
   return text
     .toLowerCase()
@@ -267,6 +294,52 @@ function analyzeEssaySignals(text: string) {
     /djamila ribeiro/g,
   ]);
 
+  const repertoireReferenceCount = countOccurrences(normalized, [
+    /\bsegundo\b/g,
+    /\bde acordo com\b/g,
+    /\bconforme\b/g,
+    /\bfilosofo\b/g,
+    /\bsociologo\b/g,
+    /\bescritor\b/g,
+    /\bautor\b/g,
+    /\bconstituicao\b/g,
+    /\blei\b/g,
+  ]);
+
+  const interventionAgentCount = countOccurrences(normalized, [
+    /\bgoverno\b/g,
+    /\bestado\b/g,
+    /\bpoder publico\b/g,
+    /\bministerio\b/g,
+    /\bmec\b/g,
+    /\bescola\b/g,
+    /\bmidia\b/g,
+    /\bfamilia\b/g,
+    /\bsociedade civil\b/g,
+    /\bong\b/g,
+  ]);
+
+  const interventionActionCount = countOccurrences(normalized, [
+    /\bdeve\b/g,
+    /\bpromover\b/g,
+    /\bimplementar\b/g,
+    /\bcriar\b/g,
+    /\bampliar\b/g,
+    /\boferecer\b/g,
+    /\bfiscalizar\b/g,
+    /\brealizar\b/g,
+    /\binvestir\b/g,
+    /\bincentivar\b/g,
+  ]);
+
+  const interventionIntentCount = countOccurrences(normalized, [
+    /\bpara\b/g,
+    /\ba fim de\b/g,
+    /\bcom o objetivo de\b/g,
+    /\bvisando\b/g,
+    /\bde modo a\b/g,
+  ]);
+
   const repeatedExpressions = [
     "problema social",
     "falta de respeito",
@@ -284,6 +357,11 @@ function analyzeEssaySignals(text: string) {
   return {
     hasConcreteData: concreteDataCount >= 2,
     hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 2,
+    hasPertinentRepertoire:
+      strongRepertoireCount >= 1 ||
+      concreteDataCount >= 1 ||
+      genericRepertoireCount >= 1 ||
+      repertoireReferenceCount >= 1,
     hasGenericRepertoire: genericRepertoireCount >= 2,
     hasGenericArgumentation: genericArgumentCount >= 3,
     hasSophisticatedLanguage:
@@ -309,6 +387,10 @@ function analyzeEssaySignals(text: string) {
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
+    hasBasicIntervention:
+      interventionAgentCount >= 1 &&
+      interventionActionCount >= 1 &&
+      interventionIntentCount >= 1,
     hasCompleteIntervention:
       normalized.includes("por meio") ||
       normalized.includes("a fim de") ||
@@ -344,7 +426,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     applyPenalty(
       processed,
       "competencia_2",
-      signals.hasLexicalRepetition && signals.hasSimpleSyntax ? 120 : 160,
+      signals.hasPertinentRepertoire
+        ? 160
+        : signals.hasLexicalRepetition && signals.hasSimpleSyntax
+          ? 120
+          : 160,
       "Houve ausência ou fragilidade de dados concretos, exemplos verificáveis ou referências consistentes para sustentar o repertório.",
       "Inclua estatísticas, pesquisas, leis, episódios históricos delimitados ou exemplos sociais concretos para sustentar o argumento.",
     );
@@ -430,6 +516,14 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     ensureMinimumScore(processed, "competencia_4", 160);
   }
 
+  if (signals.hasPertinentRepertoire) {
+    ensureMinimumScore(processed, "competencia_2", 160);
+  }
+
+  if (signals.hasBasicIntervention) {
+    ensureMinimumScore(processed, "competencia_5", 160);
+  }
+
   if (
     getPenaltyCount(processed) === 0 &&
     signals.hasLexicalRepetition &&
@@ -442,6 +536,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       "O domínio linguístico foi correto, mas não atingiu nível excepcional de variedade lexical e complexidade sintática.",
       "Busque maior diversidade vocabular, períodos mais bem modulados e construções sintáticas mais complexas sem perder clareza.",
     );
+  }
+
+  if (getLowScoreCount(processed) > 1 && !signals.hasSevereDevelopmentIssue) {
+    if (signals.hasPertinentRepertoire) {
+      ensureMinimumScore(processed, "competencia_2", 160);
+    }
+
+    if (signals.hasBasicIntervention) {
+      ensureMinimumScore(processed, "competencia_5", 160);
+    }
   }
 
   const componentKeys = [
@@ -459,26 +563,31 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     }
   }
 
-  processed.nota_final =
-    (processed.competencia_1?.nota ?? 0) +
-    (processed.competencia_2?.nota ?? 0) +
-    (processed.competencia_3?.nota ?? 0) +
-    (processed.competencia_4?.nota ?? 0) +
-    (processed.competencia_5?.nota ?? 0);
+  recalculateFinalScore(processed);
 
-  if (signals.hasBasicEssayStructure && processed.nota_final < 480) {
+  if (signals.hasBasicEssayStructure && (processed.nota_final ?? 0) < 480) {
     ensureMinimumScore(processed, "competencia_1", 80);
     ensureMinimumScore(processed, "competencia_2", 120);
     ensureMinimumScore(processed, "competencia_3", 120);
     ensureMinimumScore(processed, "competencia_4", 120);
     ensureMinimumScore(processed, "competencia_5", 120);
 
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
+    recalculateFinalScore(processed);
+  }
+
+  const shouldApplyMedianEssayFloor =
+    signals.hasBasicEssayStructure &&
+    signals.hasPertinentRepertoire &&
+    signals.hasBasicIntervention &&
+    !signals.hasSevereDevelopmentIssue;
+
+  if (shouldApplyMedianEssayFloor && (processed.nota_final ?? 0) < 760) {
+    ensureMinimumScore(processed, "competencia_2", 160);
+    ensureMinimumScore(processed, "competencia_5", 160);
+    ensureMinimumScore(processed, "competencia_3", 160);
+    ensureMinimumScore(processed, "competencia_4", 160);
+    ensureMinimumScore(processed, "competencia_1", 120);
+    recalculateFinalScore(processed);
   }
 
   if (
@@ -509,7 +618,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     hasValidIntervention &&
     !signals.hasSevereDevelopmentIssue;
 
-  if (shouldApplyStructuredEssayFloor && processed.nota_final < 860) {
+  if (shouldApplyStructuredEssayFloor && (processed.nota_final ?? 0) < 860) {
     ensureMinimumScore(processed, "competencia_1", 160);
     ensureMinimumScore(processed, "competencia_3", 160);
     ensureMinimumScore(processed, "competencia_4", 160);
@@ -598,7 +707,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if (processed.nota_final > 960 && !signals.isExceptionalEssay) {
+  if ((processed.nota_final ?? 0) > 960 && !signals.isExceptionalEssay) {
     applyPenalty(
       processed,
       "competencia_4",
@@ -658,6 +767,404 @@ function safePostProcessEvaluation(result: CorrectionResult, essayText: string) 
   } catch (error) {
     console.error("postProcessEvaluation failed", error);
     return result;
+  }
+}
+
+function isRetryableGeminiError(error: unknown) {
+  const status = typeof error === "object" && error !== null ? Reflect.get(error, "status") : null;
+  const message =
+    typeof error === "object" && error !== null
+      ? String(Reflect.get(error, "message") ?? "")
+      : String(error ?? "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  return [
+    "404",
+    "not found",
+    "model not found",
+    "requested entity was not found",
+    "is not found for api version",
+    "is not supported for generatecontent",
+    "rate limit",
+    "quota",
+    "resource exhausted",
+    "too many requests",
+    "overload",
+    "overloaded",
+    "timeout",
+    "timed out",
+    "deadline exceeded",
+    "service unavailable",
+    "unavailable",
+    "temporarily unavailable",
+    "try again later",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+  ].some((term) => normalizedMessage.includes(term));
+}
+
+function isRetryableOpenAIError(error: unknown) {
+  const status = typeof error === "object" && error !== null ? Reflect.get(error, "status") : null;
+  const message =
+    typeof error === "object" && error !== null
+      ? String(Reflect.get(error, "message") ?? "")
+      : String(error ?? "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (status === 408 || status === 409 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  return [
+    "rate limit",
+    "quota",
+    "too many requests",
+    "overload",
+    "overloaded",
+    "timeout",
+    "timed out",
+    "service unavailable",
+    "unavailable",
+    "temporarily unavailable",
+    "try again later",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+  ].some((term) => normalizedMessage.includes(term));
+}
+
+function parseOpenAIOutputText(data: unknown) {
+  if (typeof data !== "object" || data === null) {
+    return "";
+  }
+
+  const outputText = Reflect.get(data, "output_text");
+  if (typeof outputText === "string" && outputText.trim()) {
+    return outputText.trim();
+  }
+
+  const output = Reflect.get(data, "output");
+  if (!Array.isArray(output)) {
+    return "";
+  }
+
+  for (const item of output) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+
+    const content = Reflect.get(item, "content");
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const entry of content) {
+      if (typeof entry !== "object" || entry === null) {
+        continue;
+      }
+
+      const text = Reflect.get(entry, "text");
+      if (typeof text === "string" && text.trim()) {
+        return text.trim();
+      }
+    }
+  }
+
+  return "";
+}
+
+function parseCorrectionResponse(rawResponse: string) {
+  const startIdx = rawResponse.indexOf("{");
+  const endIdx = rawResponse.lastIndexOf("}") + 1;
+
+  if (startIdx < 0 || endIdx <= startIdx) {
+    console.error("Correction response parsing failed", {
+      startIdx,
+      endIdx,
+      rawPreview: rawResponse.slice(0, 1200),
+    });
+    throw new Error("A IA retornou uma resposta fora do formato esperado.");
+  }
+
+  const jsonString = rawResponse.substring(startIdx, endIdx);
+  try {
+    return JSON.parse(jsonString) as CorrectionResult;
+  } catch (error) {
+    console.error("Correction JSON parse failed", {
+      parseError: error instanceof Error ? error.message : String(error),
+      jsonPreview: jsonString.slice(0, 1200),
+    });
+    throw new Error("A IA retornou um JSON inválido.", {
+      cause: error instanceof Error ? error : undefined,
+    });
+  }
+}
+
+function isKnownProviderFailure(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return [
+    "No momento atingimos o limite de correções. Tente novamente mais tarde.",
+    "OpenAI fallback unavailable.",
+    "A IA retornou uma resposta fora do formato esperado.",
+    "A IA retornou um JSON inválido.",
+    "A OpenAI retornou uma resposta vazia.",
+    "A OpenAI retornou uma resposta não-JSON.",
+  ].includes(error.message);
+}
+
+function buildErrorLog(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { error };
+  }
+
+  const cause =
+    error.cause instanceof Error
+      ? {
+          message: error.cause.message,
+          stack: error.cause.stack,
+        }
+      : error.cause;
+
+  return {
+    message: error.message,
+    stack: error.stack,
+    cause,
+  };
+}
+
+function getErrorDetails(error: unknown) {
+  if (!(error instanceof Error)) {
+    return { message: String(error), raw: error };
+  }
+
+  const status =
+    typeof error === "object" && error !== null ? Reflect.get(error, "status") : undefined;
+  const code =
+    typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+  const responseBody =
+    typeof error === "object" && error !== null ? Reflect.get(error, "responseBody") : undefined;
+
+  return {
+    name: error.name,
+    message: error.message,
+    status,
+    code,
+    responseBody,
+  };
+}
+
+function parseJsonSafely(rawText: string) {
+  try {
+    return {
+      data: JSON.parse(rawText) as unknown,
+      parseError: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      parseError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function corrigirComFallback(
+  prompt: string,
+  chavesDisponiveis: string[],
+) {
+  let lastRetryableError: unknown = null;
+
+  for (const key of chavesDisponiveis) {
+    const genAI = new GoogleGenerativeAI(key);
+
+    for (const modelName of GEMINI_MODELOS_PARA_TESTAR) {
+      console.info("Gemini correction attempt started", {
+        model: modelName,
+        apiKeyConfigured: Boolean(key),
+      });
+
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const rawResponse = result.response.text();
+        const evaluation = parseCorrectionResponse(rawResponse);
+
+        console.info("Gemini correction model selected", { model: modelName });
+
+        return {
+          evaluation,
+          selectedModel: modelName,
+        };
+      } catch (error) {
+        const retryable =
+          isRetryableGeminiError(error) ||
+          (error instanceof Error &&
+            (error.message === "A IA retornou uma resposta fora do formato esperado." ||
+              error.message === "A IA retornou um JSON inválido."));
+
+        console.warn("Gemini correction attempt failed", {
+          model: modelName,
+          retryable,
+          ...getErrorDetails(error),
+        });
+
+        if (!retryable) {
+          throw error;
+        }
+
+        lastRetryableError = error;
+      }
+    }
+  }
+
+  throw new Error(
+    "No momento atingimos o limite de correções. Tente novamente mais tarde.",
+    {
+      cause: lastRetryableError ?? undefined,
+    },
+  );
+}
+
+async function corrigirComOpenAI(prompt: string, apiKey: string) {
+  let lastRetryableError: unknown = null;
+
+  for (const modelName of OPENAI_MODELOS_PARA_TESTAR) {
+    console.info("OpenAI correction attempt started", {
+      model: modelName,
+      apiKeyConfigured: Boolean(apiKey),
+    });
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          input: prompt,
+          text: {
+            format: {
+              type: "json_object",
+            },
+          },
+        }),
+      });
+
+      const responseText = await response.text();
+      const { data, parseError } = parseJsonSafely(responseText);
+
+      if (parseError) {
+        console.error("OpenAI response parse failed", {
+          model: modelName,
+          status: response.status,
+          parseError,
+          rawBody: responseText.slice(0, 1200),
+        });
+        throw new Error("A OpenAI retornou uma resposta não-JSON.");
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof data === "object" && data !== null
+            ? String(
+                Reflect.get(
+                  typeof Reflect.get(data, "error") === "object" &&
+                    Reflect.get(data, "error") !== null
+                    ? (Reflect.get(data, "error") as object)
+                    : data,
+                  "message",
+                ) ?? `OpenAI request failed with status ${response.status}`,
+              )
+            : `OpenAI request failed with status ${response.status}`;
+        const error = Object.assign(new Error(message), {
+          status: response.status,
+          responseBody: responseText.slice(0, 1200),
+        });
+
+        if (!isRetryableOpenAIError(error)) {
+          throw error;
+        }
+
+        console.warn("OpenAI correction attempt failed", {
+          model: modelName,
+          retryable: true,
+          ...getErrorDetails(error),
+        });
+
+        lastRetryableError = error;
+        continue;
+      }
+
+      const rawResponse = parseOpenAIOutputText(data);
+
+      if (!rawResponse) {
+        throw new Error("A OpenAI retornou uma resposta vazia.");
+      }
+
+      const evaluation = parseCorrectionResponse(rawResponse);
+
+      console.info("OpenAI correction model selected", { model: modelName });
+
+      return {
+        evaluation,
+        selectedModel: `openai:${modelName}`,
+      };
+    } catch (error) {
+      const retryable =
+        isRetryableOpenAIError(error) ||
+        (error instanceof Error &&
+          (error.message === "A IA retornou uma resposta fora do formato esperado." ||
+            error.message === "A IA retornou um JSON inválido." ||
+            error.message === "A OpenAI retornou uma resposta vazia."));
+
+      console.warn("OpenAI correction attempt failed", {
+        model: modelName,
+        retryable,
+        ...getErrorDetails(error),
+      });
+
+      if (!retryable) {
+        throw error;
+      }
+
+      lastRetryableError = error;
+    }
+  }
+
+  throw new Error("OpenAI fallback unavailable.", {
+    cause: lastRetryableError ?? undefined,
+  });
+}
+
+async function corrigirComFallbackEntreIAs(
+  prompt: string,
+  chavesDisponiveis: string[],
+  openAiApiKey?: string,
+) {
+  try {
+    return await corrigirComFallback(prompt, chavesDisponiveis);
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+
+    if (!openAiApiKey) {
+      throw error;
+    }
+
+    console.warn("Gemini failed, switching correction provider to OpenAI.", {
+      reason: error.message,
+    });
+    return corrigirComOpenAI(prompt, openAiApiKey);
   }
 }
 
@@ -788,8 +1295,14 @@ export async function POST(request: Request) {
       process.env.GEMINI_API_KEY_2,
       process.env.GEMINI_API_KEY_3,
     ].filter(Boolean);
+    const openAiApiKey = process.env.OPENAI_API_KEY;
 
-    if (chavesDisponiveis.length === 0) {
+    console.info("Correction provider configuration", {
+      geminiKeysConfigured: chavesDisponiveis.length,
+      openAiConfigured: Boolean(openAiApiKey),
+    });
+
+    if (chavesDisponiveis.length === 0 && !openAiApiKey) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
     }
 
@@ -880,51 +1393,12 @@ SAÍDA:
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
-    const modelosParaTestar = [
-      "gemini-2.5-pro",
-      "gemini-2.5-flash",
-      "gemini-2.0-flash",
-    ];
-
-    let rawResponse = "";
-    let selectedModel: string | null = null;
-    let sucesso = false;
-
-    for (const key of chavesDisponiveis) {
-      if (sucesso) {
-        break;
-      }
-
-      const genAI = new GoogleGenerativeAI(key as string);
-
-      for (const modelName of modelosParaTestar) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const result = await model.generateContent(promptMestre);
-          rawResponse = result.response.text();
-          selectedModel = modelName;
-          sucesso = true;
-          break;
-        } catch {
-          continue;
-        }
-      }
-    }
-
-    if (!sucesso) {
-      throw new Error("Limite de API excedido em todas as chaves.");
-    }
-
-    const startIdx = rawResponse.indexOf("{");
-    const endIdx = rawResponse.lastIndexOf("}") + 1;
-
-    if (startIdx < 0 || endIdx <= startIdx) {
-      throw new Error("A IA retornou uma resposta fora do formato esperado.");
-    }
-
-    const jsonString = rawResponse.substring(startIdx, endIdx);
-    const avaliacao = JSON.parse(jsonString) as CorrectionResult;
-    const processedEvaluation = safePostProcessEvaluation(avaliacao, normalizedText);
+    const { evaluation, selectedModel } = await corrigirComFallbackEntreIAs(
+      promptMestre,
+      chavesDisponiveis as string[],
+      openAiApiKey,
+    );
+    const processedEvaluation = safePostProcessEvaluation(evaluation, normalizedText);
     const comparison = await getLatestEssayComparison(
       supabase,
       profile,
@@ -953,7 +1427,17 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
       buildCorrectionPayload(processedEvaluation, selectedModel, "fresh", usageAfter),
     );
   } catch (error) {
-    console.error("corrigir route failed", error);
+    console.error("corrigir route failed", buildErrorLog(error));
+
+    if (isKnownProviderFailure(error)) {
+      return NextResponse.json(
+        {
+          error: "No momento atingimos o limite de correções. Tente novamente mais tarde.",
+        },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json(
       { error: "Ocorreu um erro ao processar sua nota. Tente novamente em 2 minutos." },
       { status: 500 },

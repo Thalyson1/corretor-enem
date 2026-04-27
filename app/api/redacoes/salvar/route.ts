@@ -41,6 +41,22 @@ function getStorageLimitMessage(role: UserProfile["role"]) {
   return "A conta atual atingiu o limite configurado de redações salvas.";
 }
 
+function inferAiProvider(aiModel?: string | null) {
+  if (!aiModel) {
+    return "manual-save";
+  }
+
+  if (aiModel.startsWith("openai:") || aiModel.startsWith("gpt-")) {
+    return "openai";
+  }
+
+  if (aiModel.startsWith("gemini-")) {
+    return "google-gemini";
+  }
+
+  return "external-ai";
+}
+
 export async function POST(request: Request) {
   try {
     const { supabase, session, profile } = await getCurrentProfile();
@@ -109,7 +125,7 @@ export async function POST(request: Request) {
       theme: normalizedTheme,
       result: avaliacao,
       contentHash: buildEssayHash(normalizedText, normalizedTheme),
-      aiProvider: aiModel ? "google-gemini" : "manual-save",
+      aiProvider: inferAiProvider(aiModel),
       aiModel: aiModel ?? null,
       cacheSource: cacheSource ?? "fresh",
     });

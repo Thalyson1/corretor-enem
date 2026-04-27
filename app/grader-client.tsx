@@ -5,6 +5,7 @@ import type {
   CorrectionResponse,
   CorrectionResult,
   EssayHistoryItem,
+  ImprovedRewriteResponse,
   MonthlyRankingView,
   SaveEssayResponse,
   UsageSnapshot,
@@ -16,6 +17,8 @@ type GraderClientProps = {
   currentRole: "student" | "teacher" | "admin";
   ranking: MonthlyRankingView;
 };
+
+const PRIMARY_GEMINI_MODEL = "gemini-3.1-flash-lite";
 
 const THEME_SUGGESTIONS = [
   "Os desafios para combater a desinformação no Brasil",
@@ -108,6 +111,94 @@ function getTrendLabel(history: EssayHistoryItem[]) {
   return "Sua última redação manteve a mesma pontuação da anterior.";
 }
 
+function hasModelFallback(aiModel?: string | null) {
+  return !!aiModel && aiModel !== PRIMARY_GEMINI_MODEL;
+}
+
+function getCorrectionStatusMessages(result: CorrectionResponse) {
+  const messages = ["CorreÃ§Ã£o concluÃ­da com sucesso"];
+
+  if (result.cacheSource !== "fresh") {
+    messages.push("CorreÃ§Ã£o recuperada do histÃ³rico/cache");
+  }
+
+  if (result.cacheSource === "fresh" && hasModelFallback(result.aiModel)) {
+    messages.push("Usamos uma rota alternativa para concluir sua correÃ§Ã£o.");
+  }
+
+  return messages;
+}
+
+function normalizePlanText(text?: string) {
+  return String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.:;,\s]+$/g, "");
+}
+
+function buildFallbackPriorityMessage(competency: number) {
+  if (competency === 2) {
+    return "Reforce seu repertÃ³rio com dados, exemplos ou referÃªncias mais especÃ­ficas.";
+  }
+
+  if (competency === 3) {
+    return "Aprofunde melhor seus argumentos para explicar causas, efeitos e consequÃªncias.";
+  }
+
+  if (competency === 5) {
+    return "Detalhe mais sua proposta de intervenÃ§Ã£o, sobretudo o meio e o efeito esperado.";
+  }
+
+  if (competency === 4) {
+    return "Melhore a conexÃ£o entre as ideias para deixar o texto mais fluido.";
+  }
+
+  return "Revise a escrita para ganhar mais clareza, precisÃ£o e seguranÃ§a na linguagem.";
+}
+
+function buildRefinementPlan() {
+  return [
+    "Refine seu repertÃ³rio com referÃªncias ainda mais especÃ­ficas e bem conectadas ao tema.",
+    "Aprofunde um pouco mais a anÃ¡lise dos argumentos para mostrar mais densidade crÃ­tica.",
+    "Deixe a proposta de intervenÃ§Ã£o ainda mais detalhada para se aproximar da nota mÃ¡xima.",
+  ];
+}
+
+function getImprovementPlan(result: CorrectionResponse) {
+  const competencies = [1, 2, 3, 4, 5]
+    .map((number) => {
+      const key = `competencia_${number}` as keyof CorrectionResult;
+      const data = result[key] as CorrectionResult["competencia_1"] | undefined;
+
+      return {
+        number,
+        score: data?.nota ?? 0,
+        improvement: normalizePlanText(data?.melhoria),
+        diagnosis: normalizePlanText(data?.justificativa),
+      };
+    })
+    .sort((a, b) => a.score - b.score);
+
+  const allHighScores = competencies.every((competency) => competency.score >= 160);
+
+  if (allHighScores) {
+    return buildRefinementPlan();
+  }
+
+  return competencies
+    .slice(0, 3)
+    .map((competency) => {
+      const sourceText = competency.improvement || competency.diagnosis;
+
+      if (sourceText) {
+        return sourceText;
+      }
+
+      return buildFallbackPriorityMessage(competency.number);
+    })
+    .filter(Boolean);
+}
+
 function ProgressChart({ history }: { history: EssayHistoryItem[] }) {
   const scores = history
     .slice()
@@ -192,9 +283,12 @@ export function GraderClient({
   const [redacao, setRedacao] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rewriteLoading, setRewriteLoading] = useState(false);
   const [history, setHistory] = useState(initialHistory);
   const [usage, setUsage] = useState(initialUsage);
   const [resultado, setResultado] = useState<CorrectionResponse | null>(null);
+  const [improvedEssay, setImprovedEssay] = useState<string | null>(null);
+  const [improvedEssayModel, setImprovedEssayModel] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{
     tipo: "sucesso" | "erro";
     texto: string;
@@ -233,6 +327,11 @@ export function GraderClient({
     return Math.max(...history.map((essay) => essay.finalScore));
   }, [history]);
 
+  const improvementPlan = useMemo(
+    () => (resultado ? getImprovementPlan(resultado) : []),
+    [resultado],
+  );
+
   const currentFingerprint = `${tema.trim()}::${redacao.trim()}::${resultado?.nota_final ?? "sem-nota"}`;
   const canSaveCurrentEssay =
     !!resultado &&
@@ -260,6 +359,8 @@ export function GraderClient({
 
     setLoading(true);
     setResultado(null);
+    setImprovedEssay(null);
+    setImprovedEssayModel(null);
     setAviso(null);
 
     try {
@@ -374,6 +475,54 @@ export function GraderClient({
     }
   }
 
+  async function gerarVersaoMelhorada() {
+    if (!tema.trim() || !redacao.trim() || !resultado) {
+      setAviso({
+        tipo: "erro",
+        texto: "FaÃ§a a correÃ§Ã£o da redaÃ§Ã£o antes de gerar a versÃ£o melhorada.",
+      });
+      return;
+    }
+
+    setRewriteLoading(true);
+    setAviso(null);
+
+    try {
+      const resposta = await fetch("/api/reescrever", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          texto: redacao,
+          tema: tema.trim(),
+          avaliacao: resultado,
+        }),
+      });
+
+      const dados = (await resposta.json()) as ImprovedRewriteResponse;
+
+      if (!resposta.ok) {
+        throw new Error(dados.error ?? "NÃ£o foi possÃ­vel gerar a versÃ£o melhorada.");
+      }
+
+      setImprovedEssay(dados.rewrittenEssay ?? null);
+      setImprovedEssayModel(dados.aiModel ?? null);
+      setAviso({
+        tipo: "sucesso",
+        texto: "Sua versÃ£o melhorada foi gerada com base no feedback da correÃ§Ã£o.",
+      });
+    } catch (error) {
+      setAviso({
+        tipo: "erro",
+        texto:
+          error instanceof Error
+            ? error.message
+            : "NÃ£o foi possÃ­vel gerar a versÃ£o melhorada agora.",
+      });
+    } finally {
+      setRewriteLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div className="grid gap-4 md:grid-cols-4">
@@ -421,6 +570,31 @@ export function GraderClient({
       </div>
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-600">
+              Nova correção
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900">
+              Envie sua redação para análise
+            </h2>
+            <p className="max-w-2xl text-sm leading-6 text-slate-500">
+              Preencha o tema, cole seu texto e receba nota, diagnóstico e próximos passos em poucos instantes.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+              Feedback por competência
+            </span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+              Plano de melhoria
+            </span>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+              Reescrita melhorada
+            </span>
+          </div>
+        </div>
+
         <div className="mb-8 space-y-6">
           <div className="space-y-2">
             <label
@@ -479,7 +653,17 @@ export function GraderClient({
           disabled={loading || saving}
         />
 
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+          <div className="mb-4">
+            <div className="text-sm font-semibold text-slate-900">
+              Ações da correção
+            </div>
+            <p className="text-sm text-slate-500">
+              Corrija primeiro. Depois, se quiser, salve no histórico ou gere uma versão melhorada.
+            </p>
+          </div>
+
+          <div className="space-y-4">
           <button
             onClick={corrigirRedacao}
             disabled={loading || saving}
@@ -511,6 +695,21 @@ export function GraderClient({
               {saving ? "Salvando..." : "Salvar redação no histórico"}
             </button>
           ) : null}
+
+          {resultado ? (
+            <button
+              onClick={gerarVersaoMelhorada}
+              disabled={rewriteLoading || loading || saving}
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-lg font-bold transition ${
+                rewriteLoading || loading || saving
+                  ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+                  : "border border-indigo-200 bg-white text-indigo-700 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-50"
+              }`}
+            >
+              {rewriteLoading ? "Gerando versÃ£o melhorada..." : "Gerar versÃ£o melhorada"}
+            </button>
+          ) : null}
+          </div>
         </div>
 
         {aviso ? (
@@ -666,10 +865,36 @@ export function GraderClient({
                 </div>
 
                 <div className="space-y-8 p-8">
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+                        <svg
+                          viewBox="0 0 20 20"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          aria-hidden="true"
+                        >
+                          <path d="M4.5 10.5 8 14l7.5-8" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                      <div className="space-y-1.5">
+                        {getCorrectionStatusMessages(resultado).map((message) => (
+                          <p key={message} className="font-medium leading-6">
+                            {message}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
+                    {currentRole === "admin" ? (
                     <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
                       {resultado.aiModel ?? "Modelo não informado"}
                     </span>
+                    ) : null}
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
                       {getCacheLabel(resultado.cacheSource)}
                     </span>
@@ -733,6 +958,61 @@ export function GraderClient({
                       })}
                     </div>
                   </section>
+
+                  {improvementPlan.length > 0 ? (
+                    <section className="space-y-4 border-t border-slate-200 pt-8">
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-bold text-slate-900">
+                          Plano de melhoria
+                        </h3>
+                        <p className="text-sm text-slate-500">
+                          Priorize estes ajustes na sua prÃ³xima versÃ£o para evoluir com mais clareza.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+                        <div className="space-y-3">
+                          {improvementPlan.slice(0, 3).map((item, index) => (
+                            <div
+                              key={`${index}-${item}`}
+                              className="rounded-xl border border-emerald-100 bg-white/80 p-4 text-sm leading-6 text-slate-700"
+                            >
+                              <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
+                                {index + 1}
+                              </span>
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {improvedEssay ? (
+                    <section className="space-y-4 border-t border-slate-200 pt-8">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-2">
+                          <h3 className="text-2xl font-bold text-slate-900">
+                            VersÃ£o melhorada da sua redaÃ§Ã£o
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            Esta reescrita preserva sua ideia central e aplica os principais ajustes do feedback.
+                          </p>
+                        </div>
+                        {currentRole === "admin" && improvedEssayModel ? (
+                          <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {improvedEssayModel}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-6">
+                        <p className="whitespace-pre-line text-sm leading-7 text-slate-700">
+                          {improvedEssay}
+                        </p>
+                      </div>
+                    </section>
+                  ) : null}
 
                   {resultado.comparacao ? (
                     <section className="space-y-4 border-t border-slate-200 pt-8">
