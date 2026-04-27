@@ -610,6 +610,15 @@ function buildCorrectionPayload(
   };
 }
 
+function safePostProcessEvaluation(result: CorrectionResult, essayText: string) {
+  try {
+    return postProcessEvaluation(result, essayText);
+  } catch (error) {
+    console.error("postProcessEvaluation failed", error);
+    return result;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { supabase, session, profile } = await getCurrentProfile();
@@ -708,7 +717,7 @@ export async function POST(request: Request) {
       });
 
       const usageAfterCache = await getUsageSnapshot(supabase, profile);
-      const processedCached = postProcessEvaluation(
+      const processedCached = safePostProcessEvaluation(
         cachedCorrection.result,
         normalizedText,
       );
@@ -873,7 +882,7 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
     const jsonString = rawResponse.substring(startIdx, endIdx);
     const avaliacao = JSON.parse(jsonString) as CorrectionResult;
-    const processedEvaluation = postProcessEvaluation(avaliacao, normalizedText);
+    const processedEvaluation = safePostProcessEvaluation(avaliacao, normalizedText);
     const comparison = await getLatestEssayComparison(
       supabase,
       profile,
@@ -901,7 +910,8 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
     return NextResponse.json(
       buildCorrectionPayload(processedEvaluation, selectedModel, "fresh", usageAfter),
     );
-  } catch {
+  } catch (error) {
+    console.error("corrigir route failed", error);
     return NextResponse.json(
       { error: "Ocorreu um erro ao processar sua nota. Tente novamente em 2 minutos." },
       { status: 500 },
