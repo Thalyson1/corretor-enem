@@ -20,26 +20,28 @@ export default async function Home() {
     displayName.toLowerCase() !== session.user.email.toLowerCase();
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="bg-gradient-to-r from-slate-900 to-indigo-900 px-4 py-12 text-white shadow-md sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-slate-100 text-slate-900">
+      <header className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-900 px-4 py-12 text-white shadow-md sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-5xl flex-col gap-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-4">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-5">
               <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-indigo-100">
                 Área autenticada
               </div>
-              <div>
-                <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl">
-                  Corretor IA <span className="text-indigo-300">Padrão ENEM</span>
+              <div className="space-y-4">
+                <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight md:text-5xl">
+                  Corrija sua redação no <span className="text-indigo-300">padrão ENEM</span> em segundos
                 </h1>
-                <p className="mt-4 max-w-3xl text-lg text-indigo-100">
-                  Agora a correção não é salva automaticamente: você corrige primeiro
-                  e decide depois o que entra no seu histórico.
+                <p className="max-w-3xl text-lg leading-8 text-indigo-100">
+                  Receba nota por competência, feedback detalhado e sugestões de melhoria com IA
+                </p>
+                <p className="max-w-3xl text-base leading-7 text-indigo-100/85">
+                  Você corrige primeiro e decide depois o que entra no seu histórico para acompanhar sua evolução com mais clareza.
                 </p>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/10 bg-white/10 p-5 backdrop-blur">
+            <div className="rounded-[28px] border border-white/10 bg-white/10 p-5 shadow-lg shadow-slate-950/20 backdrop-blur">
               <div className="mb-3">
                 <NavLinks role={profile.role} />
               </div>
@@ -63,7 +65,7 @@ export default async function Home() {
         </div>
       </header>
 
-      <section className="-mt-6 px-4 pb-12 sm:px-6 lg:px-8">
+      <section className="-mt-6 px-4 pb-14 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
           <GraderClient
             initialHistory={history}

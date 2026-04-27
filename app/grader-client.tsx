@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CorrectionResponse,
   CorrectionResult,
@@ -21,6 +21,12 @@ const THEME_SUGGESTIONS = [
   "Os desafios para combater a desinformação no Brasil",
   "Caminhos para reduzir a evasão escolar no ensino médio",
   "Os impactos do uso excessivo das redes sociais entre jovens",
+];
+
+const LOADING_MESSAGES = [
+  "Analisando sua redação...",
+  "Avaliando competências...",
+  "Gerando feedback...",
 ];
 
 function formatDate(value: string) {
@@ -85,7 +91,7 @@ function getCacheLabel(cacheSource?: EssayHistoryItem["cacheSource"]) {
 
 function getTrendLabel(history: EssayHistoryItem[]) {
   if (history.length < 2) {
-    return "Ainda não há histórico suficiente para medir tendência.";
+    return "Você ainda não tem histórico suficiente para medir tendência.";
   }
 
   const [latest, previous] = history;
@@ -112,7 +118,7 @@ function ProgressChart({ history }: { history: EssayHistoryItem[] }) {
   if (scores.length < 2) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-        Assim que houver pelo menos duas redações salvas, o gráfico de evolução aparece aqui.
+        Salve pelo menos duas redações para visualizar sua evolução 📈
       </div>
     );
   }
@@ -194,7 +200,21 @@ export function GraderClient({
     texto: string;
   } | null>(null);
   const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
+  const [loadingStep, setLoadingStep] = useState(0);
   const boletimRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStep(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setLoadingStep((current) => (current + 1) % LOADING_MESSAGES.length);
+    }, 1200);
+
+    return () => window.clearInterval(interval);
+  }, [loading]);
 
   const averageScore = useMemo(() => {
     if (history.length === 0) {
@@ -271,7 +291,7 @@ export function GraderClient({
         texto: "Correção concluída. Se quiser, agora você pode salvar a redação no histórico.",
       });
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         boletimRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 500);
     } catch (error) {
@@ -330,7 +350,8 @@ export function GraderClient({
       }
 
       if (dados.savedEssay) {
-        setHistory((current) => [dados.savedEssay!, ...current].slice(0, 20));
+        const savedEssay = dados.savedEssay;
+        setHistory((current) => [savedEssay, ...current].slice(0, 20));
       }
       if (dados.usage) {
         setUsage(dados.usage);
@@ -400,23 +421,28 @@ export function GraderClient({
       </div>
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <div className="mb-6">
-          <label
-            htmlFor="tema"
-            className="mb-2 block text-lg font-semibold text-slate-800"
-          >
-            Qual é o tema da redação?
-          </label>
+        <div className="mb-8 space-y-6">
+          <div className="space-y-2">
+            <label
+              htmlFor="tema"
+              className="block text-lg font-semibold text-slate-900"
+            >
+              Tema da redação <span className="text-rose-500">*</span>
+            </label>
+            <p className="text-sm text-slate-500">
+              Informar o tema ajuda a IA a avaliar melhor a Competência 2.
+            </p>
+          </div>
           <input
             type="text"
             id="tema"
             className="w-full rounded-2xl border border-slate-300 bg-slate-50 p-4 text-lg text-slate-700 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-            placeholder="Ex.: Os desafios para combater a desinformação no Brasil"
+            placeholder="Ex: Os desafios para combater a desinformação no Brasil"
             value={tema}
             onChange={(event) => setTema(event.target.value)}
             disabled={loading || saving}
           />
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
             {THEME_SUGGESTIONS.map((suggestion) => (
               <button
                 key={suggestion}
@@ -434,7 +460,7 @@ export function GraderClient({
         <div className="mb-4 flex items-center justify-between gap-4">
           <label
             htmlFor="redacao"
-            className="block text-lg font-semibold text-slate-800"
+            className="block text-lg font-semibold text-slate-900"
           >
             Texto da redação
           </label>
@@ -453,7 +479,7 @@ export function GraderClient({
           disabled={loading || saving}
         />
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="mt-6 space-y-4">
           <button
             onClick={corrigirRedacao}
             disabled={loading || saving}
@@ -463,20 +489,28 @@ export function GraderClient({
                 : "bg-indigo-600 hover:-translate-y-0.5 hover:bg-indigo-700 hover:shadow-indigo-200"
             }`}
           >
-            {loading ? "Processando avaliação..." : "Solicitar correção"}
+            {loading ? LOADING_MESSAGES[loadingStep] : "Corrigir redação"}
           </button>
 
-          <button
-            onClick={salvarRedacao}
-            disabled={!canSaveCurrentEssay || loading || saving}
-            className={`flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-lg font-bold text-white shadow-lg transition ${
-              !canSaveCurrentEssay || saving || loading
-                ? "cursor-not-allowed bg-emerald-300"
-                : "bg-emerald-600 hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-emerald-200"
-            }`}
-          >
-            {saving ? "Salvando..." : "Salvar redação no histórico"}
-          </button>
+          {loading ? (
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm font-medium text-indigo-800">
+              Estamos avaliando sua redação em etapas para entregar um feedback mais claro e detalhado.
+            </div>
+          ) : null}
+
+          {resultado ? (
+            <button
+              onClick={salvarRedacao}
+              disabled={!canSaveCurrentEssay || saving}
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-lg font-bold text-white shadow-lg transition ${
+                !canSaveCurrentEssay || saving
+                  ? "cursor-not-allowed bg-emerald-300"
+                  : "bg-emerald-600 hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-emerald-200"
+              }`}
+            >
+              {saving ? "Salvando..." : "Salvar redação no histórico"}
+            </button>
+          ) : null}
         </div>
 
         {aviso ? (
@@ -494,19 +528,24 @@ export function GraderClient({
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <h3 className="mb-4 text-2xl font-bold text-slate-900">
-            Histórico de redações salvas
-          </h3>
+          <div className="mb-6">
+            <h3 className="text-2xl font-bold text-slate-900">
+              Histórico de redações salvas
+            </h3>
+            <p className="mt-2 text-sm text-slate-500">
+              Revise seus envios e acompanhe a consistência das suas notas.
+            </p>
+          </div>
           {history.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-              Suas redações só aparecem aqui quando você decide salvá-las manualmente.
+              Você ainda não salvou nenhuma redação. Corrija e salve para acompanhar sua evolução.
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {history.map((essay) => (
                 <article
                   key={essay.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -605,14 +644,19 @@ export function GraderClient({
             {resultado?.nota_final !== undefined ? (
               <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 p-8 text-center">
+                  <div className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Resultado da correção
+                  </div>
                   <h2 className="mb-2 text-xl font-bold uppercase tracking-[0.25em] text-slate-500">
                     Nota final
                   </h2>
-                  <div className="bg-gradient-to-r from-indigo-600 to-indigo-900 bg-clip-text text-7xl font-black text-transparent">
-                    {resultado.nota_final}
-                  </div>
-                  <div className="mt-4 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800">
-                    Nível: {getPerformanceLevel(resultado.nota_final)}
+                  <div className="rounded-[32px] bg-slate-950 px-6 py-8 shadow-inner">
+                    <div className="bg-gradient-to-r from-indigo-300 via-white to-indigo-300 bg-clip-text text-7xl font-black text-transparent">
+                      {resultado.nota_final}
+                    </div>
+                    <div className="mt-4 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800">
+                      Nível: {getPerformanceLevel(resultado.nota_final)}
+                    </div>
                   </div>
                   {resultado.resumo_geral ? (
                     <p className="mt-6 inline-block max-w-3xl rounded-2xl border border-slate-100 bg-white p-6 text-left text-lg italic leading-relaxed text-slate-700 shadow-sm">
@@ -621,8 +665,8 @@ export function GraderClient({
                   ) : null}
                 </div>
 
-                <div className="p-8">
-                  <div className="mb-6 flex flex-wrap gap-2">
+                <div className="space-y-8 p-8">
+                  <div className="flex flex-wrap gap-2">
                     <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
                       {resultado.aiModel ?? "Modelo não informado"}
                     </span>
@@ -630,77 +674,69 @@ export function GraderClient({
                       {getCacheLabel(resultado.cacheSource)}
                     </span>
                   </div>
-                  <h3 className="mb-6 border-b-2 border-slate-100 pb-2 text-2xl font-bold text-slate-800">
-                    Detalhamento por competência
-                  </h3>
-                  <div className="space-y-6">
-                    {[1, 2, 3, 4, 5].map((num) => {
-                      const comp = resultado[
-                        `competencia_${num}` as keyof CorrectionResult
-                      ] as CorrectionResult[`competencia_1`] | undefined;
 
-                      if (!comp) {
-                        return null;
-                      }
+                  <section className="space-y-6">
+                    <div className="space-y-2 border-b border-slate-200 pb-4">
+                      <h3 className="text-2xl font-bold text-slate-900">
+                        Competências
+                      </h3>
+                      <p className="text-sm text-slate-500">
+                        Veja sua nota em cada critério do ENEM, com diagnóstico e orientação prática.
+                      </p>
+                    </div>
 
-                      return (
-                        <div
-                          key={num}
-                          className="rounded-2xl border-l-4 border-indigo-500 bg-slate-50 p-6 transition-shadow hover:shadow-md"
-                        >
-                          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <h4 className="text-lg font-bold text-slate-800">
-                              Competência {num}
-                            </h4>
-                            <span className="rounded-full bg-indigo-100 px-4 py-1.5 text-sm font-bold text-indigo-800">
-                              {comp.nota} / 200 pts
-                            </span>
-                          </div>
+                    <div className="space-y-5">
+                      {[1, 2, 3, 4, 5].map((num) => {
+                        const comp = resultado[
+                          `competencia_${num}` as keyof CorrectionResult
+                        ] as CorrectionResult["competencia_1"] | undefined;
 
-                          <div className="mb-4">
-                            <span className="mb-1 block font-semibold text-slate-700">
-                              Diagnóstico:
-                            </span>
-                            <span className="leading-relaxed text-slate-600">
-                              {comp.justificativa}
-                            </span>
-                          </div>
+                        if (!comp) {
+                          return null;
+                        }
 
-                          <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4">
-                            <svg
-                              className="mt-0.5 h-6 w-6 flex-shrink-0 text-amber-500"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                            <div>
-                              <span className="mb-1 block font-semibold text-slate-700">
-                                Como melhorar:
-                              </span>
-                              <span className="text-sm text-slate-600">
-                                {comp.melhoria}
+                        return (
+                          <div
+                            key={num}
+                            className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm"
+                          >
+                            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <h4 className="text-lg font-bold text-slate-900">
+                                Competência {num}
+                              </h4>
+                              <span className="rounded-full bg-indigo-100 px-4 py-1.5 text-sm font-bold text-indigo-800">
+                                {comp.nota} / 200 pts
                               </span>
                             </div>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <div className="mb-2 text-sm font-semibold text-slate-900">
+                                  Diagnóstico
+                                </div>
+                                <p className="text-sm leading-6 text-slate-600">
+                                  {comp.justificativa}
+                                </p>
+                              </div>
+
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <div className="mb-2 text-sm font-semibold text-slate-900">
+                                  Como melhorar
+                                </div>
+                                <p className="text-sm leading-6 text-slate-600">
+                                  {comp.melhoria}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </section>
 
-                  {resultado.comparacao ? (() => {
-                    const comparacao = resultado.comparacao;
-
-                    return (
-                    <div className="mt-8 border-t border-slate-200 pt-8">
-                      <h3 className="mb-4 text-2xl font-bold text-slate-800">
+                  {resultado.comparacao ? (
+                    <section className="space-y-4 border-t border-slate-200 pt-8">
+                      <h3 className="text-2xl font-bold text-slate-900">
                         Comparação com a versão anterior
                       </h3>
                       <div className="grid gap-4 md:grid-cols-3">
@@ -709,7 +745,7 @@ export function GraderClient({
                             Nota anterior
                           </div>
                           <div className="mt-2 text-3xl font-black text-slate-900">
-                            {comparacao.previousFinalScore}
+                            {resultado.comparacao.previousFinalScore}
                           </div>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -717,7 +753,7 @@ export function GraderClient({
                             Nota atual
                           </div>
                           <div className="mt-2 text-3xl font-black text-slate-900">
-                            {comparacao.currentFinalScore}
+                            {resultado.comparacao.currentFinalScore}
                           </div>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -726,24 +762,24 @@ export function GraderClient({
                           </div>
                           <div
                             className={`mt-2 text-3xl font-black ${
-                              comparacao.finalScoreDiff > 0
+                              resultado.comparacao.finalScoreDiff > 0
                                 ? "text-emerald-700"
-                                : comparacao.finalScoreDiff < 0
+                                : resultado.comparacao.finalScoreDiff < 0
                                   ? "text-rose-700"
                                   : "text-slate-900"
                             }`}
                           >
-                            {formatDiff(comparacao.finalScoreDiff)} pontos
+                            {formatDiff(resultado.comparacao.finalScoreDiff)} pontos
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                         <div className="mb-3 text-sm font-semibold text-slate-700">
                           Evolução por competência
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                          {comparacao.competencyDiffs.map((diff, index) => (
+                          {resultado.comparacao.competencyDiffs.map((diff, index) => (
                             <div
                               key={`comparison-${index + 1}`}
                               className="rounded-xl border border-slate-200 bg-white p-4"
@@ -752,8 +788,8 @@ export function GraderClient({
                                 C{index + 1}
                               </div>
                               <div className="mt-2 text-sm text-slate-600">
-                                {comparacao.previousCompetencies[index]} →{" "}
-                                {comparacao.currentCompetencies[index]}
+                                {resultado.comparacao?.previousCompetencies[index]} →{" "}
+                                {resultado.comparacao?.currentCompetencies[index]}
                               </div>
                               <div
                                 className={`mt-2 text-lg font-bold ${
@@ -771,21 +807,25 @@ export function GraderClient({
                         </div>
                       </div>
 
-                      <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-5 text-sm leading-7 text-slate-700">
+                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 text-sm leading-7 text-slate-700">
                         <span className="font-semibold text-slate-900">
                           Resumo da evolução:
                         </span>{" "}
-                        {comparacao.summary}
+                        {resultado.comparacao.summary}
                       </div>
-                    </div>
-                    );
-                  })() : null}
+                    </section>
+                  ) : null}
 
                   {resultado.sugestoes_reescrita && resultado.sugestoes_reescrita.length > 0 ? (
-                    <div className="mt-8 border-t border-slate-200 pt-8">
-                      <h3 className="mb-4 text-2xl font-bold text-slate-800">
-                        Sugestões de reescrita
-                      </h3>
+                    <section className="space-y-4 border-t border-slate-200 pt-8">
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-bold text-slate-900">
+                          Sugestões de reescrita
+                        </h3>
+                        <p className="text-sm text-slate-500">
+                          Exemplos práticos para elevar clareza, especificidade e sofisticação.
+                        </p>
+                      </div>
                       <div className="space-y-4">
                         {resultado.sugestoes_reescrita.map((sugestao, index) => (
                           <article
@@ -816,7 +856,7 @@ export function GraderClient({
                           </article>
                         ))}
                       </div>
-                    </div>
+                    </section>
                   ) : null}
                 </div>
               </div>
