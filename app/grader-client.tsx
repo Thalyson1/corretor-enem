@@ -2,9 +2,10 @@
 
 import { useMemo, useRef, useState } from "react";
 import type {
+  CorrectionResponse,
   CorrectionResult,
   EssayHistoryItem,
-  PersistedCorrectionResponse,
+  SaveEssayResponse,
   UsageSnapshot,
 } from "@/lib/essay-types";
 
@@ -18,19 +19,27 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
-function getUsageLabel(role: GraderClientProps["currentRole"]) {
-  if (role === "student") {
-    return "Redações salvas nesta semana";
-  }
-
+function getCorrectionLabel(role: GraderClientProps["currentRole"]) {
   if (role === "teacher") {
     return "Correções da conta nesta semana";
   }
 
-  return "Uso semanal da conta";
+  if (role === "admin") {
+    return "Correções da conta";
+  }
+
+  return "Correções nesta semana";
 }
 
-function getCacheLabel(cacheSource: EssayHistoryItem["cacheSource"]) {
+function getStorageLabel(role: GraderClientProps["currentRole"]) {
+  if (role === "student") {
+    return "Redações salvas no histórico";
+  }
+
+  return "Histórico salvo";
+}
+
+function getCacheLabel(cacheSource?: EssayHistoryItem["cacheSource"]) {
   if (cacheSource === "duplicate_student") {
     return "cache do próprio aluno";
   }
@@ -143,13 +152,15 @@ export function GraderClient({
   const [tema, setTema] = useState("");
   const [redacao, setRedacao] = useState("");
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState(initialHistory);
   const [usage, setUsage] = useState(initialUsage);
-  const [resultado, setResultado] = useState<CorrectionResult | null>(null);
+  const [resultado, setResultado] = useState<CorrectionResponse | null>(null);
   const [aviso, setAviso] = useState<{
     tipo: "sucesso" | "erro";
     texto: string;
   } | null>(null);
+  const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
   const boletimRef = useRef<HTMLDivElement>(null);
 
   const averageScore = useMemo(() => {
@@ -168,6 +179,13 @@ export function GraderClient({
 
     return Math.max(...history.map((essay) => essay.finalScore));
   }, [history]);
+
+  const currentFingerprint = `${tema.trim()}::${redacao.trim()}::${resultado?.nota_final ?? "sem-nota"}`;
+  const canSaveCurrentEssay =
+    !!resultado &&
+    !!redacao.trim() &&
+    savedFingerprint !== currentFingerprint &&
+    usage.storedEssaysCount < usage.storedEssaysLimit;
 
   async function corrigirRedacao() {
     if (!redacao.trim()) {
@@ -192,7 +210,7 @@ export function GraderClient({
         }),
       });
 
-      const dados = (await resposta.json()) as PersistedCorrectionResponse;
+      const dados = (await resposta.json()) as CorrectionResponse;
 
       if (!resposta.ok) {
         if (dados.usage) {
@@ -202,24 +220,19 @@ export function GraderClient({
       }
 
       setResultado(dados);
-      if (dados.savedEssay) {
-        setHistory((current) => [dados.savedEssay!, ...current].slice(0, 12));
-      }
       if (dados.usage) {
         setUsage(dados.usage);
       }
+      setSavedFingerprint(null);
       setAviso({
         tipo: "sucesso",
-        texto: "Avaliação concluída e salva com sucesso no seu histórico.",
+        texto: "Correção concluída. Se quiser, agora você pode salvar a redação no histórico.",
       });
-      setTema("");
-      setRedacao("");
 
       setTimeout(() => {
         boletimRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 500);
     } catch (error) {
-      console.error(error);
       setAviso({
         tipo: "erro",
         texto:
@@ -232,26 +245,88 @@ export function GraderClient({
     }
   }
 
+  async function salvarRedacao() {
+    if (!resultado) {
+      setAviso({
+        tipo: "erro",
+        texto: "Faça a correção da redação antes de salvá-la.",
+      });
+      return;
+    }
+
+    setSaving(true);
+    setAviso(null);
+
+    try {
+      const resposta = await fetch("/api/redacoes/salvar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          texto: redacao,
+          tema: tema.trim() === "" ? "Tema livre" : tema,
+          avaliacao: resultado,
+          aiModel: resultado.aiModel ?? null,
+          cacheSource: resultado.cacheSource ?? "fresh",
+        }),
+      });
+
+      const dados = (await resposta.json()) as SaveEssayResponse;
+
+      if (!resposta.ok) {
+        if (dados.usage) {
+          setUsage(dados.usage);
+        }
+        throw new Error(dados.error ?? "Não foi possível salvar a redação.");
+      }
+
+      if (dados.savedEssay) {
+        setHistory((current) => [dados.savedEssay!, ...current].slice(0, 20));
+      }
+      if (dados.usage) {
+        setUsage(dados.usage);
+      }
+      setSavedFingerprint(currentFingerprint);
+      setAviso({
+        tipo: "sucesso",
+        texto: "Redação salva com sucesso no seu histórico.",
+      });
+    } catch (error) {
+      setAviso({
+        tipo: "erro",
+        texto:
+          error instanceof Error
+            ? error.message
+            : "Não foi possível salvar a redação agora.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-sm font-semibold text-slate-500">
-            {getUsageLabel(currentRole)}
+            {getCorrectionLabel(currentRole)}
           </div>
           <div className="mt-2 text-3xl font-black text-slate-900">
-            {usage.weeklySavedEssaysUsed}/{usage.weeklySavedEssaysLimit}
+            {usage.weeklyCorrectionsUsed}/{usage.weeklyCorrectionsLimit}
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Correções usadas: {usage.weeklyCorrectionsUsed}/{usage.weeklyCorrectionsLimit}
+            Limite semanal de correções da conta.
           </p>
         </div>
 
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-semibold text-slate-500">Redações no histórico</div>
-          <div className="mt-2 text-3xl font-black text-slate-900">{history.length}</div>
+          <div className="text-sm font-semibold text-slate-500">
+            {getStorageLabel(currentRole)}
+          </div>
+          <div className="mt-2 text-3xl font-black text-slate-900">
+            {usage.storedEssaysCount}/{usage.storedEssaysLimit}
+          </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Suas últimas redações corrigidas ficam salvas para acompanhar progresso.
+            As redações só entram no histórico quando você salva manualmente.
           </p>
         </div>
 
@@ -289,7 +364,7 @@ export function GraderClient({
             placeholder="Ex.: Os desafios para combater a desinformação no Brasil"
             value={tema}
             onChange={(event) => setTema(event.target.value)}
-            disabled={loading}
+            disabled={loading || saving}
           />
         </div>
 
@@ -312,20 +387,34 @@ export function GraderClient({
           placeholder="Digite ou cole aqui sua redação dissertativo-argumentativa..."
           value={redacao}
           onChange={(event) => setRedacao(event.target.value)}
-          disabled={loading}
+          disabled={loading || saving}
         />
 
-        <button
-          onClick={corrigirRedacao}
-          disabled={loading}
-          className={`mt-6 flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-lg font-bold text-white shadow-lg transition ${
-            loading
-              ? "cursor-not-allowed bg-indigo-400"
-              : "bg-indigo-600 hover:-translate-y-0.5 hover:bg-indigo-700 hover:shadow-indigo-200"
-          }`}
-        >
-          {loading ? "Processando avaliação..." : "Solicitar correção"}
-        </button>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button
+            onClick={corrigirRedacao}
+            disabled={loading || saving}
+            className={`flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-lg font-bold text-white shadow-lg transition ${
+              loading
+                ? "cursor-not-allowed bg-indigo-400"
+                : "bg-indigo-600 hover:-translate-y-0.5 hover:bg-indigo-700 hover:shadow-indigo-200"
+            }`}
+          >
+            {loading ? "Processando avaliação..." : "Solicitar correção"}
+          </button>
+
+          <button
+            onClick={salvarRedacao}
+            disabled={!canSaveCurrentEssay || loading || saving}
+            className={`flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-lg font-bold text-white shadow-lg transition ${
+              !canSaveCurrentEssay || saving || loading
+                ? "cursor-not-allowed bg-emerald-300"
+                : "bg-emerald-600 hover:-translate-y-0.5 hover:bg-emerald-700 hover:shadow-emerald-200"
+            }`}
+          >
+            {saving ? "Salvando..." : "Salvar redação no histórico"}
+          </button>
+        </div>
 
         {aviso ? (
           <div
@@ -343,11 +432,11 @@ export function GraderClient({
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <h3 className="mb-4 text-2xl font-bold text-slate-900">
-            Histórico de redações
+            Histórico de redações salvas
           </h3>
           {history.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-              Suas redações corrigidas vão aparecer aqui automaticamente.
+              Suas redações só aparecem aqui quando você decide salvá-las manualmente.
             </div>
           ) : (
             <div className="space-y-3">
@@ -408,6 +497,14 @@ export function GraderClient({
                 </div>
 
                 <div className="p-8">
+                  <div className="mb-6 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {resultado.aiModel ?? "Modelo não informado"}
+                    </span>
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                      {getCacheLabel(resultado.cacheSource)}
+                    </span>
+                  </div>
                   <h3 className="mb-6 border-b-2 border-slate-100 pb-2 text-2xl font-bold text-slate-800">
                     Detalhamento por competência
                   </h3>

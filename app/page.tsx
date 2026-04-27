@@ -32,8 +32,8 @@ export default async function Home() {
                   Corretor IA <span className="text-indigo-300">Padrão ENEM</span>
                 </h1>
                 <p className="mt-4 max-w-3xl text-lg text-indigo-100">
-                  Plataforma de avaliação textual com acesso por perfil para
-                  alunos, professoras e gestão escolar.
+                  Agora a correção não é salva automaticamente: você corrige primeiro
+                  e decide depois o que entra no seu histórico.
                 </p>
               </div>
             </div>

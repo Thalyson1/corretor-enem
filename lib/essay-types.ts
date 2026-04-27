@@ -15,11 +15,13 @@ export type CorrectionResult = {
   error?: string;
 };
 
+export type CacheSource = "fresh" | "duplicate_student" | "duplicate_global";
+
 export type UsageSnapshot = {
   weeklyCorrectionsUsed: number;
   weeklyCorrectionsLimit: number;
-  weeklySavedEssaysUsed: number;
-  weeklySavedEssaysLimit: number;
+  storedEssaysCount: number;
+  storedEssaysLimit: number;
 };
 
 export type EssayHistoryItem = {
@@ -32,10 +34,17 @@ export type EssayHistoryItem = {
   wordCount: number;
   competencies: [number, number, number, number, number];
   aiModel: string | null;
-  cacheSource: "fresh" | "duplicate_student" | "duplicate_global";
+  cacheSource: CacheSource;
 };
 
-export type PersistedCorrectionResponse = CorrectionResult & {
+export type CorrectionResponse = CorrectionResult & {
+  usage?: UsageSnapshot;
+  aiModel?: string | null;
+  cacheSource?: CacheSource;
+};
+
+export type SaveEssayResponse = {
+  error?: string;
   savedEssay?: EssayHistoryItem;
   usage?: UsageSnapshot;
 };

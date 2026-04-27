@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import type { UserProfile } from "@/lib/auth";
-import type { CorrectionResult } from "@/lib/essay-types";
+import type { CacheSource, CorrectionResponse, CorrectionResult } from "@/lib/essay-types";
 import { createClient } from "@/lib/supabase/server";
 import {
   buildEssayHash,
@@ -9,7 +9,6 @@ import {
   getUsageSnapshot,
   logUsageEvent,
   saveCorrectionFromCache,
-  saveCorrectionResult,
 } from "@/lib/essays";
 
 async function getCurrentProfile() {
@@ -39,7 +38,7 @@ async function getCurrentProfile() {
 
 function getQuotaErrorMessage(role: UserProfile["role"]) {
   if (role === "student") {
-    return "Você atingiu seu limite semanal de redações salvas. Tente novamente na próxima semana ou peça apoio à professora.";
+    return "Você atingiu o limite semanal de 10 correções. Tente novamente na próxima semana.";
   }
 
   if (role === "teacher") {
@@ -47,6 +46,20 @@ function getQuotaErrorMessage(role: UserProfile["role"]) {
   }
 
   return "A conta atual atingiu o limite semanal configurado.";
+}
+
+function buildCorrectionPayload(
+  result: CorrectionResult,
+  aiModel: string | null,
+  cacheSource: CacheSource,
+  usage: CorrectionResponse["usage"],
+): CorrectionResponse {
+  return {
+    ...result,
+    aiModel,
+    cacheSource,
+    usage,
+  };
 }
 
 export async function POST(request: Request) {
@@ -71,13 +84,9 @@ export async function POST(request: Request) {
     const normalizedTheme = String(tema ?? "").trim() || "Tema livre";
     const normalizedText = String(texto ?? "").trim();
     const contentHash = buildEssayHash(normalizedText, normalizedTheme);
-
     const usageBefore = await getUsageSnapshot(supabase, profile);
 
-    if (
-      usageBefore.weeklyCorrectionsUsed >= usageBefore.weeklyCorrectionsLimit ||
-      usageBefore.weeklySavedEssaysUsed >= usageBefore.weeklySavedEssaysLimit
-    ) {
+    if (usageBefore.weeklyCorrectionsUsed >= usageBefore.weeklyCorrectionsLimit) {
       return NextResponse.json(
         {
           error: getQuotaErrorMessage(profile.role),
@@ -87,24 +96,13 @@ export async function POST(request: Request) {
       );
     }
 
-    await logUsageEvent({
-      supabase,
-      profileId: profile.id,
-      eventType: "correction_requested",
-      metadata: {
-        content_hash: contentHash,
-        theme: normalizedTheme,
-      },
-    });
-
     const numeroDePalavras = normalizedText.split(/\s+/).length;
     if (numeroDePalavras < 70) {
-      return NextResponse.json({
+      const shortTextResult: CorrectionResult = {
         competencia_1: {
           nota: 0,
           justificativa: "Texto insuficiente.",
-          melhoria:
-            "Escreva pelo menos 70 palavras para que sua redação possa ser avaliada.",
+          melhoria: "Escreva pelo menos 70 palavras para que sua redação possa ser avaliada.",
         },
         competencia_2: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
         competencia_3: { nota: 0, justificativa: "Texto insuficiente.", melhoria: "" },
@@ -113,8 +111,11 @@ export async function POST(request: Request) {
         nota_final: 0,
         resumo_geral:
           "REDAÇÃO ANULADA: o texto apresenta menos de 70 palavras estimadas, o que configura insuficiência de texto segundo os critérios adotados nesta plataforma.",
-        usage: usageBefore,
-      });
+      };
+
+      return NextResponse.json(
+        buildCorrectionPayload(shortTextResult, null, "fresh", usageBefore),
+      );
     }
 
     const cached = await findCachedCorrection(
@@ -125,7 +126,7 @@ export async function POST(request: Request) {
     );
 
     if (cached) {
-      const savedEssay = await saveCorrectionFromCache({
+      const cachedCorrection = await saveCorrectionFromCache({
         supabase,
         profile,
         text: normalizedText,
@@ -134,89 +135,29 @@ export async function POST(request: Request) {
         cachedEssay: cached.cachedEssay,
         cacheSource: cached.cacheSource,
       });
+
+      await logUsageEvent({
+        supabase,
+        profileId: profile.id,
+        eventType: "correction_saved",
+        metadata: {
+          content_hash: contentHash,
+          theme: normalizedTheme,
+          cache_source: cached.cacheSource,
+          ai_model: cachedCorrection.aiModel,
+        },
+      });
+
       const usageAfterCache = await getUsageSnapshot(supabase, profile);
 
-      return NextResponse.json({
-        ...{
-          competencia_1: {
-            nota:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_1_score ?? 0
-                : cached.cachedEssay.essay_scores?.competency_1_score ?? 0,
-            justificativa:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_1_justification ?? ""
-                : cached.cachedEssay.essay_scores?.competency_1_justification ?? "",
-            melhoria:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_1_improvement ?? ""
-                : cached.cachedEssay.essay_scores?.competency_1_improvement ?? "",
-          },
-          competencia_2: {
-            nota:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_2_score ?? 0
-                : cached.cachedEssay.essay_scores?.competency_2_score ?? 0,
-            justificativa:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_2_justification ?? ""
-                : cached.cachedEssay.essay_scores?.competency_2_justification ?? "",
-            melhoria:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_2_improvement ?? ""
-                : cached.cachedEssay.essay_scores?.competency_2_improvement ?? "",
-          },
-          competencia_3: {
-            nota:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_3_score ?? 0
-                : cached.cachedEssay.essay_scores?.competency_3_score ?? 0,
-            justificativa:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_3_justification ?? ""
-                : cached.cachedEssay.essay_scores?.competency_3_justification ?? "",
-            melhoria:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_3_improvement ?? ""
-                : cached.cachedEssay.essay_scores?.competency_3_improvement ?? "",
-          },
-          competencia_4: {
-            nota:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_4_score ?? 0
-                : cached.cachedEssay.essay_scores?.competency_4_score ?? 0,
-            justificativa:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_4_justification ?? ""
-                : cached.cachedEssay.essay_scores?.competency_4_justification ?? "",
-            melhoria:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_4_improvement ?? ""
-                : cached.cachedEssay.essay_scores?.competency_4_improvement ?? "",
-          },
-          competencia_5: {
-            nota:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_5_score ?? 0
-                : cached.cachedEssay.essay_scores?.competency_5_score ?? 0,
-            justificativa:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_5_justification ?? ""
-                : cached.cachedEssay.essay_scores?.competency_5_justification ?? "",
-            melhoria:
-              Array.isArray(cached.cachedEssay.essay_scores)
-                ? cached.cachedEssay.essay_scores[0]?.competency_5_improvement ?? ""
-                : cached.cachedEssay.essay_scores?.competency_5_improvement ?? "",
-          },
-          nota_final: cached.cachedEssay.final_score ?? 0,
-          resumo_geral:
-            (Array.isArray(cached.cachedEssay.essay_scores)
-              ? cached.cachedEssay.essay_scores[0]?.summary
-              : cached.cachedEssay.essay_scores?.summary) ?? "",
-        } satisfies CorrectionResult,
-        savedEssay,
-        usage: usageAfterCache,
-      });
+      return NextResponse.json(
+        buildCorrectionPayload(
+          cachedCorrection.result,
+          cachedCorrection.aiModel,
+          cachedCorrection.cacheSource,
+          usageAfterCache,
+        ),
+      );
     }
 
     const chavesDisponiveis = [
@@ -295,7 +236,7 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
           sucesso = true;
           break;
         } catch {
-          console.error(`Falha no modelo ${modelName} com uma das chaves.`);
+          continue;
         }
       }
     }
@@ -306,29 +247,32 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
     const startIdx = rawResponse.indexOf("{");
     const endIdx = rawResponse.lastIndexOf("}") + 1;
+
+    if (startIdx < 0 || endIdx <= startIdx) {
+      throw new Error("A IA retornou uma resposta fora do formato esperado.");
+    }
+
     const jsonString = rawResponse.substring(startIdx, endIdx);
     const avaliacao = JSON.parse(jsonString) as CorrectionResult;
 
-    const savedEssay = await saveCorrectionResult({
+    await logUsageEvent({
       supabase,
-      profile,
-      text: normalizedText,
-      theme: normalizedTheme,
-      result: avaliacao,
-      contentHash,
-      aiProvider: "google-gemini",
-      aiModel: selectedModel,
-      cacheSource: "fresh",
+      profileId: profile.id,
+      eventType: "correction_saved",
+      metadata: {
+        content_hash: contentHash,
+        theme: normalizedTheme,
+        cache_source: "fresh",
+        ai_model: selectedModel,
+      },
     });
+
     const usageAfter = await getUsageSnapshot(supabase, profile);
 
-    return NextResponse.json({
-      ...avaliacao,
-      savedEssay,
-      usage: usageAfter,
-    });
-  } catch (error) {
-    console.error("Erro na API de correção:", error);
+    return NextResponse.json(
+      buildCorrectionPayload(avaliacao, selectedModel, "fresh", usageAfter),
+    );
+  } catch {
     return NextResponse.json(
       { error: "Ocorreu um erro ao processar sua nota. Tente novamente em 2 minutos." },
       { status: 500 },

@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UserProfile } from "@/lib/auth";
 import type {
+  CacheSource,
   CorrectionResult,
   EssayHistoryItem,
   StudentSummary,
@@ -21,7 +22,7 @@ type EssayRow = {
   corrected_at: string | null;
   word_count: number;
   ai_model: string | null;
-  cache_source: "fresh" | "duplicate_student" | "duplicate_global";
+  cache_source: CacheSource;
   essay_scores:
     | {
         summary: string | null;
@@ -47,7 +48,7 @@ type CachedEssayRow = {
   final_score: number | null;
   word_count: number;
   ai_model: string | null;
-  cache_source: "fresh" | "duplicate_student" | "duplicate_global";
+  cache_source: CacheSource;
   essay_scores:
     | {
         competency_1_score: number;
@@ -115,7 +116,7 @@ type TeacherFeedRow = {
   corrected_at: string | null;
   word_count: number;
   ai_model: string | null;
-  cache_source: "fresh" | "duplicate_student" | "duplicate_global";
+  cache_source: CacheSource;
   essay_scores:
     | {
         summary: string | null;
@@ -248,7 +249,7 @@ export async function getUsageSnapshot(
   const [
     { data: limitRow, error: limitError },
     { count: correctionsUsed },
-    { count: savedEssaysUsed },
+    { count: storedEssaysCount },
   ] = await Promise.all([
     supabase
       .from("usage_limits")
@@ -262,11 +263,10 @@ export async function getUsageSnapshot(
       .eq("event_type", "correction_saved")
       .eq("week_start", weekStart),
     supabase
-      .from("usage_events")
+      .from("essays")
       .select("*", { count: "exact", head: true })
-      .eq("profile_id", profile.id)
-      .eq("event_type", "essay_saved")
-      .eq("week_start", weekStart),
+      .eq("student_id", profile.id)
+      .eq("status", "corrected"),
   ]);
 
   if (limitError || !limitRow) {
@@ -277,8 +277,8 @@ export async function getUsageSnapshot(
     weeklyCorrectionsUsed: correctionsUsed ?? 0,
     weeklyCorrectionsLimit:
       profile.weekly_corrections_override ?? limitRow.weekly_corrections,
-    weeklySavedEssaysUsed: savedEssaysUsed ?? 0,
-    weeklySavedEssaysLimit:
+    storedEssaysCount: storedEssaysCount ?? 0,
+    storedEssaysLimit:
       profile.weekly_saved_essays_override ?? limitRow.weekly_saved_essays,
   };
 }
@@ -312,7 +312,7 @@ export async function getEssayHistory(
     .eq("student_id", profile.id)
     .eq("status", "corrected")
     .order("submitted_at", { ascending: false })
-    .limit(12);
+    .limit(20);
 
   if (error) {
     throw new Error("Não foi possível carregar o histórico de redações.");
@@ -363,7 +363,6 @@ export async function getUserRoster(
 
   const profiles = (data ?? []) as ProfileListRow[];
   const profileIds = profiles.map((profile) => profile.id);
-
   const essayMap = new Map<string, EssayStatsRow[]>();
 
   if (profileIds.length > 0) {
@@ -625,7 +624,7 @@ export async function saveCorrectionResult(params: {
   contentHash: string;
   aiProvider?: string | null;
   aiModel?: string | null;
-  cacheSource?: "fresh" | "duplicate_student" | "duplicate_global";
+  cacheSource?: CacheSource;
 }) {
   const {
     supabase,
@@ -689,22 +688,13 @@ export async function saveCorrectionResult(params: {
     throw new Error("Não foi possível salvar o detalhamento da correção.");
   }
 
-  await Promise.all([
-    logUsageEvent({
-      supabase,
-      profileId: profile.id,
-      essayId: essay.id,
-      eventType: "correction_saved",
-      metadata: { final_score: finalScore, cache_source: cacheSource },
-    }),
-    logUsageEvent({
-      supabase,
-      profileId: profile.id,
-      essayId: essay.id,
-      eventType: "essay_saved",
-      metadata: { final_score: finalScore, cache_source: cacheSource },
-    }),
-  ]);
+  await logUsageEvent({
+    supabase,
+    profileId: profile.id,
+    essayId: essay.id,
+    eventType: "essay_saved",
+    metadata: { final_score: finalScore, cache_source: cacheSource },
+  });
 
   return {
     id: essay.id,
@@ -741,15 +731,9 @@ export async function saveCorrectionFromCache(params: {
     throw new Error("Não foi possível reaproveitar a correção em cache.");
   }
 
-  return saveCorrectionResult({
-    supabase: params.supabase,
-    profile: params.profile,
-    text: params.text,
-    theme: params.theme,
+  return {
     result: correctionResult,
-    contentHash: params.contentHash,
-    aiProvider: "cache",
     aiModel: params.cachedEssay.ai_model,
     cacheSource: params.cacheSource,
-  });
+  };
 }
