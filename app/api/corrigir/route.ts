@@ -149,6 +149,20 @@ function ensureMinimumScore(
   }
 }
 
+function getPenaltyCount(result: CorrectionResult) {
+  const components = [
+    result.competencia_1,
+    result.competencia_2,
+    result.competencia_3,
+    result.competencia_4,
+    result.competencia_5,
+  ];
+
+  return components.filter((component) =>
+    component?.justificativa?.includes("PenalizaÃ§Ã£o aplicada:"),
+  ).length;
+}
+
 function tokenizeWords(text: string) {
   return text
     .toLowerCase()
@@ -353,7 +367,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (!signals.hasSophisticatedLanguage && (signals.hasLexicalRepetition || signals.hasSimpleSyntax)) {
+  if (
+    getPenaltyCount(processed) < 2 &&
+    !signals.hasSophisticatedLanguage &&
+    (signals.hasLexicalRepetition || signals.hasSimpleSyntax)
+  ) {
     applyPenalty(
       processed,
       "competencia_1",
@@ -367,7 +385,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     ensureMinimumScore(processed, "competencia_1", 160);
   }
 
-  if (signals.hasGenericArgumentation && !signals.hasConcreteData) {
+  if (
+    getPenaltyCount(processed) < 2 &&
+    signals.hasGenericArgumentation &&
+    !signals.hasConcreteData
+  ) {
     applyPenalty(
       processed,
       "competencia_3",
@@ -377,7 +399,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (signals.hasOnlyFunctionalCohesion || signals.hasRepetitionProblem) {
+  if (
+    getPenaltyCount(processed) < 2 &&
+    (signals.hasOnlyFunctionalCohesion || signals.hasRepetitionProblem)
+  ) {
     applyPenalty(
       processed,
       "competencia_4",
@@ -395,7 +420,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     ensureMinimumScore(processed, "competencia_4", 160);
   }
 
-  if (!signals.hasSophisticatedLanguage || signals.hasLexicalRepetition || signals.hasSimpleSyntax) {
+  if (
+    getPenaltyCount(processed) < 2 &&
+    (!signals.hasSophisticatedLanguage || signals.hasLexicalRepetition || signals.hasSimpleSyntax)
+  ) {
     applyPenalty(
       processed,
       "competencia_1",
@@ -434,7 +462,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     hasValidIntervention &&
     !signals.hasSevereDevelopmentIssue;
 
-  if (shouldApplyStructuredEssayFloor && processed.nota_final < 840) {
+  if (shouldApplyStructuredEssayFloor && processed.nota_final < 860) {
     ensureMinimumScore(processed, "competencia_1", 160);
     ensureMinimumScore(processed, "competencia_3", 160);
     ensureMinimumScore(processed, "competencia_4", 160);
@@ -448,12 +476,27 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_4?.nota ?? 0) +
       (processed.competencia_5?.nota ?? 0);
 
-    if (structuredEssayTotal < 840) {
+    const excellentCompetencies = [
+      processed.competencia_1?.nota ?? 0,
+      processed.competencia_3?.nota ?? 0,
+      processed.competencia_4?.nota ?? 0,
+      processed.competencia_5?.nota ?? 0,
+    ].filter((score) => score >= 200).length;
+
+    if (structuredEssayTotal < 860 || excellentCompetencies < 3) {
       if (!signals.hasGenericArgumentation) {
         ensureMinimumScore(processed, "competencia_3", 200);
-      } else if (!signals.hasOnlyFunctionalCohesion) {
+      }
+
+      if (!signals.hasLexicalRepetition && !signals.hasSimpleSyntax) {
+        ensureMinimumScore(processed, "competencia_1", 200);
+      }
+
+      if (signals.hasBasicCohesion && !signals.hasOnlyFunctionalCohesion) {
         ensureMinimumScore(processed, "competencia_4", 200);
-      } else {
+      }
+
+      if ((processed.competencia_5?.nota ?? 0) >= 160) {
         ensureMinimumScore(processed, "competencia_5", 200);
       }
     }
