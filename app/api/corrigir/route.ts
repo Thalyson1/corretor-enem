@@ -24,6 +24,7 @@ const GEMINI_MODELOS_PARA_TESTAR = [
   "gemini-3-flash",
   "gemini-2.5-flash",
 ] as const;
+const OPENAI_MODELOS_PARA_TESTAR = ["gpt-4.1-mini"] as const;
 
 async function getCurrentProfile() {
   const supabase = await createClient();
@@ -657,6 +658,76 @@ function isRetryableGeminiError(error: unknown) {
   ].some((term) => normalizedMessage.includes(term));
 }
 
+function isRetryableOpenAIError(error: unknown) {
+  const status = typeof error === "object" && error !== null ? Reflect.get(error, "status") : null;
+  const message =
+    typeof error === "object" && error !== null
+      ? String(Reflect.get(error, "message") ?? "")
+      : String(error ?? "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (status === 408 || status === 409 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  return [
+    "rate limit",
+    "quota",
+    "too many requests",
+    "overload",
+    "overloaded",
+    "timeout",
+    "timed out",
+    "service unavailable",
+    "unavailable",
+    "temporarily unavailable",
+    "try again later",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+  ].some((term) => normalizedMessage.includes(term));
+}
+
+function parseOpenAIOutputText(data: unknown) {
+  if (typeof data !== "object" || data === null) {
+    return "";
+  }
+
+  const outputText = Reflect.get(data, "output_text");
+  if (typeof outputText === "string" && outputText.trim()) {
+    return outputText.trim();
+  }
+
+  const output = Reflect.get(data, "output");
+  if (!Array.isArray(output)) {
+    return "";
+  }
+
+  for (const item of output) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+
+    const content = Reflect.get(item, "content");
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const entry of content) {
+      if (typeof entry !== "object" || entry === null) {
+        continue;
+      }
+
+      const text = Reflect.get(entry, "text");
+      if (typeof text === "string" && text.trim()) {
+        return text.trim();
+      }
+    }
+  }
+
+  return "";
+}
+
 async function corrigirComFallback(
   prompt: string,
   chavesDisponiveis: string[],
@@ -702,6 +773,116 @@ async function corrigirComFallback(
       cause: lastRetryableError ?? undefined,
     },
   );
+}
+
+async function corrigirComOpenAI(prompt: string, apiKey: string) {
+  let lastRetryableError: unknown = null;
+
+  for (const modelName of OPENAI_MODELOS_PARA_TESTAR) {
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          input: prompt,
+          text: {
+            format: {
+              type: "json_object",
+            },
+          },
+        }),
+      });
+
+      const data = (await response.json()) as unknown;
+
+      if (!response.ok) {
+        const message =
+          typeof data === "object" && data !== null
+            ? String(
+                Reflect.get(
+                  typeof Reflect.get(data, "error") === "object" &&
+                    Reflect.get(data, "error") !== null
+                    ? (Reflect.get(data, "error") as object)
+                    : data,
+                  "message",
+                ) ?? `OpenAI request failed with status ${response.status}`,
+              )
+            : `OpenAI request failed with status ${response.status}`;
+        const error = Object.assign(new Error(message), { status: response.status });
+
+        if (!isRetryableOpenAIError(error)) {
+          throw error;
+        }
+
+        console.warn("OpenAI correction attempt failed", {
+          model: modelName,
+          retryable: true,
+          error,
+        });
+
+        lastRetryableError = error;
+        continue;
+      }
+
+      const rawResponse = parseOpenAIOutputText(data);
+
+      if (!rawResponse) {
+        throw new Error("A OpenAI retornou uma resposta vazia.");
+      }
+
+      console.info("OpenAI correction model selected", { model: modelName });
+
+      return {
+        rawResponse,
+        selectedModel: `openai:${modelName}`,
+      };
+    } catch (error) {
+      const retryable = isRetryableOpenAIError(error);
+
+      console.warn("OpenAI correction attempt failed", {
+        model: modelName,
+        retryable,
+        error,
+      });
+
+      if (!retryable) {
+        throw error;
+      }
+
+      lastRetryableError = error;
+    }
+  }
+
+  throw new Error("OpenAI fallback unavailable.", {
+    cause: lastRetryableError ?? undefined,
+  });
+}
+
+async function corrigirComFallbackEntreIAs(
+  prompt: string,
+  chavesDisponiveis: string[],
+  openAiApiKey?: string,
+) {
+  try {
+    return await corrigirComFallback(prompt, chavesDisponiveis);
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+
+    if (!openAiApiKey) {
+      throw error;
+    }
+
+    console.warn("Gemini failed, switching correction provider to OpenAI.", {
+      reason: error.message,
+    });
+    return corrigirComOpenAI(prompt, openAiApiKey);
+  }
 }
 
 export async function POST(request: Request) {
@@ -831,8 +1012,9 @@ export async function POST(request: Request) {
       process.env.GEMINI_API_KEY_2,
       process.env.GEMINI_API_KEY_3,
     ].filter(Boolean);
+    const openAiApiKey = process.env.OPENAI_API_KEY;
 
-    if (chavesDisponiveis.length === 0) {
+    if (chavesDisponiveis.length === 0 && !openAiApiKey) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
     }
 
@@ -923,9 +1105,10 @@ SAÍDA:
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
-    const { rawResponse, selectedModel } = await corrigirComFallback(
+    const { rawResponse, selectedModel } = await corrigirComFallbackEntreIAs(
       promptMestre,
       chavesDisponiveis as string[],
+      openAiApiKey,
     );
 
     const startIdx = rawResponse.indexOf("{");
