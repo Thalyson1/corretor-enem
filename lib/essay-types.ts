@@ -4,6 +4,12 @@ export type CompetencyResult = {
   melhoria: string;
 };
 
+export type RewriteSuggestion = {
+  trecho_original: string;
+  sugestao_reescrita: string;
+  motivo: string;
+};
+
 export type CorrectionResult = {
   competencia_1?: CompetencyResult;
   competencia_2?: CompetencyResult;
@@ -12,6 +18,7 @@ export type CorrectionResult = {
   competencia_5?: CompetencyResult;
   nota_final?: number;
   resumo_geral?: string;
+  sugestoes_reescrita?: RewriteSuggestion[];
   error?: string;
 };
 

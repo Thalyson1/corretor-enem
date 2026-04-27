@@ -42,7 +42,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </div>
             <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
               <div className="text-sm font-semibold text-emerald-300">
-                Professora
+                Professor
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-300">
                 Mais capacidade de uso e visão ampliada da evolução dos alunos.

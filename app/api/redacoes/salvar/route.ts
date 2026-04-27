@@ -73,12 +73,19 @@ export async function POST(request: Request) {
       cacheSource?: CacheSource;
     };
 
-    const normalizedTheme = String(tema ?? "").trim() || "Tema livre";
+    const normalizedTheme = String(tema ?? "").trim();
     const normalizedText = String(texto ?? "").trim();
 
     if (!normalizedText || !avaliacao?.nota_final) {
       return NextResponse.json(
         { error: "Faça a correção da redação antes de salvar." } satisfies SaveEssayResponse,
+        { status: 400 },
+      );
+    }
+
+    if (!normalizedTheme) {
+      return NextResponse.json(
+        { error: "Informe o tema da redação antes de salvar no histórico." } satisfies SaveEssayResponse,
         { status: 400 },
       );
     }

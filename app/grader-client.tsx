@@ -15,6 +15,12 @@ type GraderClientProps = {
   currentRole: "student" | "teacher" | "admin";
 };
 
+const THEME_SUGGESTIONS = [
+  "Os desafios para combater a desinformação no Brasil",
+  "Caminhos para reduzir a evasão escolar no ensino médio",
+  "Os impactos do uso excessivo das redes sociais entre jovens",
+];
+
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
@@ -183,11 +189,20 @@ export function GraderClient({
   const currentFingerprint = `${tema.trim()}::${redacao.trim()}::${resultado?.nota_final ?? "sem-nota"}`;
   const canSaveCurrentEssay =
     !!resultado &&
+    !!tema.trim() &&
     !!redacao.trim() &&
     savedFingerprint !== currentFingerprint &&
     usage.storedEssaysCount < usage.storedEssaysLimit;
 
   async function corrigirRedacao() {
+    if (!tema.trim()) {
+      setAviso({
+        tipo: "erro",
+        texto: "Informe o tema da redação antes de solicitar a correção.",
+      });
+      return;
+    }
+
     if (!redacao.trim()) {
       setAviso({
         tipo: "erro",
@@ -206,7 +221,7 @@ export function GraderClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           texto: redacao,
-          tema: tema.trim() === "" ? "Tema livre" : tema,
+          tema: tema.trim(),
         }),
       });
 
@@ -246,6 +261,14 @@ export function GraderClient({
   }
 
   async function salvarRedacao() {
+    if (!tema.trim()) {
+      setAviso({
+        tipo: "erro",
+        texto: "Preencha o tema para salvar a redação corretamente no histórico.",
+      });
+      return;
+    }
+
     if (!resultado) {
       setAviso({
         tipo: "erro",
@@ -263,7 +286,7 @@ export function GraderClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           texto: redacao,
-          tema: tema.trim() === "" ? "Tema livre" : tema,
+          tema: tema.trim(),
           avaliacao: resultado,
           aiModel: resultado.aiModel ?? null,
           cacheSource: resultado.cacheSource ?? "fresh",
@@ -355,7 +378,7 @@ export function GraderClient({
             htmlFor="tema"
             className="mb-2 block text-lg font-semibold text-slate-800"
           >
-            Qual é o tema da redação? <span className="text-slate-500">(opcional)</span>
+            Qual é o tema da redação?
           </label>
           <input
             type="text"
@@ -366,6 +389,19 @@ export function GraderClient({
             onChange={(event) => setTema(event.target.value)}
             disabled={loading || saving}
           />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {THEME_SUGGESTIONS.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => setTema(suggestion)}
+                disabled={loading || saving}
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mb-4 flex items-center justify-between gap-4">
@@ -569,6 +605,44 @@ export function GraderClient({
                       );
                     })}
                   </div>
+
+                  {resultado.sugestoes_reescrita && resultado.sugestoes_reescrita.length > 0 ? (
+                    <div className="mt-8 border-t border-slate-200 pt-8">
+                      <h3 className="mb-4 text-2xl font-bold text-slate-800">
+                        Sugestões de reescrita
+                      </h3>
+                      <div className="space-y-4">
+                        {resultado.sugestoes_reescrita.map((sugestao, index) => (
+                          <article
+                            key={`${sugestao.trecho_original}-${index}`}
+                            className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                          >
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                              Trecho {index + 1}
+                            </div>
+                            <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 p-4">
+                              <div className="text-sm font-semibold text-rose-700">Original</div>
+                              <p className="mt-2 text-sm leading-6 text-slate-700">
+                                {sugestao.trecho_original}
+                              </p>
+                            </div>
+                            <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                              <div className="text-sm font-semibold text-emerald-700">
+                                Reescrita sugerida
+                              </div>
+                              <p className="mt-2 text-sm leading-6 text-slate-700">
+                                {sugestao.sugestao_reescrita}
+                              </p>
+                            </div>
+                            <div className="mt-3 text-sm leading-6 text-slate-600">
+                              <span className="font-semibold text-slate-800">Por que melhorar:</span>{" "}
+                              {sugestao.motivo}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}

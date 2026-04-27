@@ -1,7 +1,12 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import type { UserProfile } from "@/lib/auth";
-import type { CacheSource, CorrectionResponse, CorrectionResult } from "@/lib/essay-types";
+import type {
+  CacheSource,
+  CorrectionResponse,
+  CorrectionResult,
+  RewriteSuggestion,
+} from "@/lib/essay-types";
 import { createClient } from "@/lib/supabase/server";
 import {
   buildEssayHash,
@@ -74,6 +79,31 @@ function appendPenaltyText(base: string | undefined, penalty: string) {
   }
 
   return `${normalized} Penalização aplicada: ${penalty}`;
+}
+
+function normalizeSuggestions(
+  suggestions: RewriteSuggestion[] | undefined,
+  originalText: string,
+) {
+  if (!Array.isArray(suggestions)) {
+    return [];
+  }
+
+  return suggestions
+    .map((suggestion) => ({
+      trecho_original: String(suggestion?.trecho_original ?? "").trim(),
+      sugestao_reescrita: String(suggestion?.sugestao_reescrita ?? "").trim(),
+      motivo: String(suggestion?.motivo ?? "").trim(),
+    }))
+    .filter(
+      (suggestion) =>
+        suggestion.trecho_original.length > 0 &&
+        suggestion.sugestao_reescrita.length > 0 &&
+        suggestion.motivo.length > 0 &&
+        originalText.toLowerCase().includes(suggestion.trecho_original.toLowerCase()) &&
+        suggestion.trecho_original.toLowerCase() !== suggestion.sugestao_reescrita.toLowerCase(),
+    )
+    .slice(0, 3);
 }
 
 function applyPenalty(
@@ -246,6 +276,10 @@ function analyzeEssaySignals(text: string) {
 function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   const processed: CorrectionResult = JSON.parse(JSON.stringify(result)) as CorrectionResult;
   const signals = analyzeEssaySignals(essayText);
+  processed.sugestoes_reescrita = normalizeSuggestions(
+    processed.sugestoes_reescrita,
+    essayText,
+  );
 
   applyPenalty(
     processed,
@@ -347,14 +381,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     }
   }
 
-  const sum =
+  processed.nota_final =
     (processed.competencia_1?.nota ?? 0) +
     (processed.competencia_2?.nota ?? 0) +
     (processed.competencia_3?.nota ?? 0) +
     (processed.competencia_4?.nota ?? 0) +
     (processed.competencia_5?.nota ?? 0);
-
-  processed.nota_final = sum;
 
   if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
     applyPenalty(
@@ -429,8 +461,18 @@ export async function POST(request: Request) {
     }
 
     const { texto, tema } = await request.json();
-    const normalizedTheme = String(tema ?? "").trim() || "Tema livre";
+    const normalizedTheme = String(tema ?? "").trim();
     const normalizedText = String(texto ?? "").trim();
+
+    if (!normalizedTheme) {
+      return NextResponse.json(
+        {
+          error: "Informe o tema da redação para receber uma correção mais precisa.",
+        },
+        { status: 400 },
+      );
+    }
+
     const contentHash = buildEssayHash(normalizedText, normalizedTheme);
     const usageBefore = await getUsageSnapshot(supabase, profile);
 
@@ -459,6 +501,7 @@ export async function POST(request: Request) {
         nota_final: 0,
         resumo_geral:
           "REDAÇÃO ANULADA: o texto apresenta menos de 70 palavras estimadas, o que configura insuficiência de texto segundo os critérios adotados nesta plataforma.",
+        sugestoes_reescrita: [],
       };
 
       return NextResponse.json(
@@ -573,6 +616,16 @@ PENALIZAÇÕES OBRIGATÓRIAS:
 - boa coesão sem sofisticação real: limite C4 em 160;
 - justifique toda penalização de forma explícita na justificativa e na melhoria.
 
+SUGESTÕES DE REESCRITA:
+- selecione até 3 trechos reais da redação que precisam de melhoria;
+- priorize argumento genérico, linguagem simples ou falta de precisão;
+- para cada trecho, mantenha o sentido original, mas reescreva com maior formalidade, especificidade e sofisticação;
+- evite exageros e não invente ideias totalmente novas;
+- cada sugestão precisa conter:
+  - trecho_original
+  - sugestao_reescrita
+  - motivo
+
 ESCALA OFICIAL:
 - 0, 40, 80, 120, 160, 200
 - Use apenas esses valores.
@@ -588,7 +641,14 @@ SAÍDA:
   "competencia_4": { "nota": 0, "justificativa": "", "melhoria": "" },
   "competencia_5": { "nota": 0, "justificativa": "", "melhoria": "" },
   "nota_final": 0,
-  "resumo_geral": ""
+  "resumo_geral": "",
+  "sugestoes_reescrita": [
+    {
+      "trecho_original": "",
+      "sugestao_reescrita": "",
+      "motivo": ""
+    }
+  ]
 }
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
