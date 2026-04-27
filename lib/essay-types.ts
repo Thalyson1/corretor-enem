@@ -84,3 +84,21 @@ export type StudentSummary = {
   weeklySavedEssaysOverride: number | null;
   weeklyCorrectionsOverride: number | null;
 };
+
+export type RankingEntry = {
+  position: number;
+  studentId: string;
+  displayName: string;
+  fullName?: string | null;
+  classGroup?: string | null;
+  bestScore: number;
+  theme: string;
+  submittedAt: string;
+  isCurrentUser: boolean;
+};
+
+export type MonthlyRankingView = {
+  monthLabel: string;
+  entries: RankingEntry[];
+  currentUserPosition: number | null;
+};

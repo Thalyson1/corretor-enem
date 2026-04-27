@@ -2,16 +2,17 @@ import { GraderClient } from "@/app/grader-client";
 import { NavLinks } from "@/app/nav-links";
 import { LogoutButton } from "@/app/logout-button";
 import { requireAuth } from "@/lib/auth";
-import { getEssayHistory, getUsageSnapshot } from "@/lib/essays";
+import { getEssayHistory, getMonthlyRanking, getUsageSnapshot } from "@/lib/essays";
 import { getDisplayName } from "@/lib/profile-display";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function Home() {
   const { profile, session } = await requireAuth();
   const supabase = await createClient();
-  const [history, usage] = await Promise.all([
+  const [history, usage, ranking] = await Promise.all([
     getEssayHistory(supabase, profile),
     getUsageSnapshot(supabase, profile),
+    getMonthlyRanking(supabase, profile),
   ]);
   const displayName = getDisplayName(profile?.full_name, session.user.email);
   const shouldShowEmailLine =
@@ -68,6 +69,7 @@ export default async function Home() {
             initialHistory={history}
             initialUsage={usage}
             currentRole={profile.role}
+            ranking={ranking}
           />
         </div>
       </section>

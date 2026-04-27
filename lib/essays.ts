@@ -8,6 +8,8 @@ import type {
   CorrectionResult,
   EssayComparison,
   EssayHistoryItem,
+  MonthlyRankingView,
+  RankingEntry,
   StudentSummary,
   UsageSnapshot,
 } from "@/lib/essay-types";
@@ -125,7 +127,15 @@ type TeacherFeedRow = {
     | {
         summary: string | null;
       }[]
-    | null;
+  | null;
+};
+
+type RankingEssayRow = {
+  id: string;
+  student_id: string;
+  theme: string;
+  final_score: number | null;
+  submitted_at: string;
 };
 
 export function getStartOfWeekInSaoPaulo() {
@@ -160,6 +170,39 @@ export function getStartOfWeekInSaoPaulo() {
   localDate.setUTCDate(localDate.getUTCDate() - diffToMonday);
 
   return localDate.toISOString().slice(0, 10);
+}
+
+function getStartOfMonthInSaoPaulo() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  });
+  const parts = formatter.formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+
+  return `${year}-${month}-01`;
+}
+
+function getCurrentMonthLabel() {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+}
+
+export function anonymizeName(name: string | null | undefined) {
+  const trimmed = (name ?? "").trim();
+
+  if (!trimmed) {
+    return "A***";
+  }
+
+  const firstLetter = trimmed[0]?.toUpperCase() ?? "A";
+  return `${firstLetter}***`;
 }
 
 export function buildEssayHash(text: string, theme: string) {
@@ -639,6 +682,113 @@ export async function getTeacherEssayFeed(
     .filter((essay) =>
       options?.classGroup ? essay.student.classGroup === options.classGroup : true,
     );
+}
+
+export async function getMonthlyRanking(
+  supabase: DatabaseClient,
+  profile: UserProfile,
+): Promise<MonthlyRankingView> {
+  const monthStart = getStartOfMonthInSaoPaulo();
+  const monthLabel = getCurrentMonthLabel();
+  const { data, error } = await supabase
+    .from("essays")
+    .select("id, student_id, theme, final_score, submitted_at")
+    .eq("status", "corrected")
+    .gte("submitted_at", monthStart)
+    .not("final_score", "is", null);
+
+  if (error) {
+    throw new Error("Não foi possível carregar o ranking do mês.");
+  }
+
+  const essays = (data ?? []) as RankingEssayRow[];
+  const studentIds = Array.from(new Set(essays.map((essay) => essay.student_id)));
+
+  let profileMap = new Map<
+    string,
+    {
+      fullName: string;
+      classGroup: string | null;
+    }
+  >();
+
+  if (studentIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, class_group")
+      .in("id", studentIds);
+
+    if (profilesError) {
+      throw new Error("Não foi possível carregar os participantes do ranking.");
+    }
+
+    profileMap = new Map(
+      (profiles ?? []).map((row) => [
+        row.id as string,
+        {
+          fullName: getDisplayName(
+            row.full_name as string | null,
+            row.email as string | null,
+          ),
+          classGroup: (row.class_group as string | null) ?? null,
+        },
+      ]),
+    );
+  }
+
+  const bestByStudent = new Map<string, RankingEssayRow>();
+
+  for (const essay of essays) {
+    const current = bestByStudent.get(essay.student_id);
+
+    if (
+      !current ||
+      (essay.final_score ?? 0) > (current.final_score ?? 0) ||
+      ((essay.final_score ?? 0) === (current.final_score ?? 0) &&
+        essay.submitted_at > current.submitted_at)
+    ) {
+      bestByStudent.set(essay.student_id, essay);
+    }
+  }
+
+  const fullRanking = Array.from(bestByStudent.values())
+    .sort((left, right) => {
+      const scoreDiff = (right.final_score ?? 0) - (left.final_score ?? 0);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+
+      return right.submitted_at.localeCompare(left.submitted_at);
+    })
+    .map((essay, index) => {
+      const student = profileMap.get(essay.student_id);
+      const fullName = student?.fullName ?? "Aluno";
+
+      return {
+        position: index + 1,
+        studentId: essay.student_id,
+        displayName:
+          profile.role === "student" ? anonymizeName(fullName) : fullName,
+        fullName,
+        classGroup: student?.classGroup ?? null,
+        bestScore: essay.final_score ?? 0,
+        theme: essay.theme,
+        submittedAt: essay.submitted_at,
+        isCurrentUser: essay.student_id === profile.id,
+      } satisfies RankingEntry;
+    });
+
+  const currentUserPosition =
+    fullRanking.find((entry) => entry.studentId === profile.id)?.position ?? null;
+
+  return {
+    monthLabel,
+    entries:
+      profile.role === "student"
+        ? fullRanking.slice(0, 5)
+        : fullRanking,
+    currentUserPosition,
+  };
 }
 
 export async function logUsageEvent(params: {

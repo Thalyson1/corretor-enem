@@ -5,6 +5,7 @@ import type {
   CorrectionResponse,
   CorrectionResult,
   EssayHistoryItem,
+  MonthlyRankingView,
   SaveEssayResponse,
   UsageSnapshot,
 } from "@/lib/essay-types";
@@ -13,6 +14,7 @@ type GraderClientProps = {
   initialHistory: EssayHistoryItem[];
   initialUsage: UsageSnapshot;
   currentRole: "student" | "teacher" | "admin";
+  ranking: MonthlyRankingView;
 };
 
 const THEME_SUGGESTIONS = [
@@ -31,6 +33,22 @@ function formatDiff(value: number) {
   }
 
   return `${value}`;
+}
+
+function getPerformanceLevel(score: number) {
+  if (score <= 600) {
+    return "Básico";
+  }
+
+  if (score <= 800) {
+    return "Intermediário";
+  }
+
+  if (score <= 900) {
+    return "Avançado";
+  }
+
+  return "Excelente";
 }
 
 function getCorrectionLabel(role: GraderClientProps["currentRole"]) {
@@ -162,6 +180,7 @@ export function GraderClient({
   initialHistory,
   initialUsage,
   currentRole,
+  ranking,
 }: GraderClientProps) {
   const [tema, setTema] = useState("");
   const [redacao, setRedacao] = useState("");
@@ -519,6 +538,65 @@ export function GraderClient({
 
         <div className="space-y-6">
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-bold text-slate-900">Ranking do mês</h3>
+                <p className="mt-1 text-sm text-slate-500 capitalize">{ranking.monthLabel}</p>
+              </div>
+              {ranking.currentUserPosition ? (
+                <div className="rounded-full bg-indigo-100 px-4 py-2 text-sm font-semibold text-indigo-800">
+                  Sua posição: #{ranking.currentUserPosition}
+                </div>
+              ) : null}
+            </div>
+
+            {ranking.entries.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                Ainda não há redações corrigidas neste mês para montar o ranking.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {ranking.entries.map((entry) => (
+                  <article
+                    key={`${entry.studentId}-${entry.position}`}
+                    className={`rounded-2xl border p-4 ${
+                      entry.isCurrentUser
+                        ? "border-indigo-200 bg-indigo-50"
+                        : "border-slate-200 bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          #{entry.position}
+                        </div>
+                        <h4 className="mt-1 font-semibold text-slate-900">
+                          {entry.displayName}
+                        </h4>
+                        {(currentRole === "teacher" || currentRole === "admin") &&
+                        entry.classGroup ? (
+                          <p className="mt-1 text-sm text-slate-500">
+                            Turma: {entry.classGroup}
+                          </p>
+                        ) : null}
+                        {currentRole !== "student" ? (
+                          <p className="mt-2 text-sm leading-6 text-slate-600">
+                            Tema: {entry.theme}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-full bg-amber-100 px-4 py-2 text-sm font-bold text-amber-800">
+                        {entry.bestScore} pontos
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="mb-4 text-2xl font-bold text-slate-900">Progressão</h3>
             <ProgressChart history={history} />
           </div>
@@ -532,6 +610,9 @@ export function GraderClient({
                   </h2>
                   <div className="bg-gradient-to-r from-indigo-600 to-indigo-900 bg-clip-text text-7xl font-black text-transparent">
                     {resultado.nota_final}
+                  </div>
+                  <div className="mt-4 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800">
+                    Nível: {getPerformanceLevel(resultado.nota_final)}
                   </div>
                   {resultado.resumo_geral ? (
                     <p className="mt-6 inline-block max-w-3xl rounded-2xl border border-slate-100 bg-white p-6 text-left text-lg italic leading-relaxed text-slate-700 shadow-sm">
