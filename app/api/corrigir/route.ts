@@ -11,6 +11,8 @@ import {
   saveCorrectionFromCache,
 } from "@/lib/essays";
 
+const SCORE_STEPS = [0, 40, 80, 120, 160, 200] as const;
+
 async function getCurrentProfile() {
   const supabase = await createClient();
   const {
@@ -46,6 +48,290 @@ function getQuotaErrorMessage(role: UserProfile["role"]) {
   }
 
   return "A conta atual atingiu o limite semanal configurado.";
+}
+
+function normalizeScore(score: number) {
+  let closest: number = SCORE_STEPS[0];
+
+  for (const step of SCORE_STEPS) {
+    if (Math.abs(step - score) < Math.abs(closest - score)) {
+      closest = step;
+    }
+  }
+
+  return closest;
+}
+
+function appendPenaltyText(base: string | undefined, penalty: string) {
+  const normalized = (base ?? "").trim();
+
+  if (!normalized) {
+    return penalty;
+  }
+
+  if (normalized.includes(penalty)) {
+    return normalized;
+  }
+
+  return `${normalized} Penalização aplicada: ${penalty}`;
+}
+
+function applyPenalty(
+  result: CorrectionResult,
+  key: keyof Pick<
+    CorrectionResult,
+    "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+  >,
+  cap: number,
+  reason: string,
+  improvement: string,
+) {
+  const comp = result[key];
+
+  if (!comp) {
+    return;
+  }
+
+  if (comp.nota > cap) {
+    comp.nota = normalizeScore(cap);
+    comp.justificativa = appendPenaltyText(comp.justificativa, reason);
+    comp.melhoria = appendPenaltyText(comp.melhoria, improvement);
+  }
+}
+
+function tokenizeWords(text: string) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .match(/[a-zà-ú0-9]+/gi) ?? [];
+}
+
+function countOccurrences(text: string, patterns: RegExp[]) {
+  return patterns.reduce((total, pattern) => total + (text.match(pattern)?.length ?? 0), 0);
+}
+
+function analyzeEssaySignals(text: string) {
+  const normalized = text.toLowerCase();
+  const words = tokenizeWords(text);
+  const uniqueWords = new Set(words);
+  const lexicalVariety = words.length > 0 ? uniqueWords.size / words.length : 0;
+  const averageWordLength =
+    words.length > 0
+      ? words.reduce((sum, word) => sum + word.length, 0) / words.length
+      : 0;
+
+  const connectorCount = countOccurrences(normalized, [
+    /\bportanto\b/g,
+    /\balem disso\b/g,
+    /\bnesse sentido\b/g,
+    /\bdesse modo\b/g,
+    /\bassim\b/g,
+    /\bentretanto\b/g,
+    /\bcontudo\b/g,
+    /\bpor conseguinte\b/g,
+    /\bademais\b/g,
+    /\blogo\b/g,
+  ]);
+
+  const genericRepertoireCount = countOccurrences(normalized, [
+    /desde os primordios/g,
+    /problema social/g,
+    /falta de respeito/g,
+    /falta de empatia/g,
+    /na sociedade atual/g,
+    /na contemporaneidade/g,
+    /na atualidade/g,
+    /e notorio/g,
+    /e evidente/g,
+  ]);
+
+  const genericArgumentCount = countOccurrences(normalized, [
+    /isso ocorre porque/g,
+    /diversos fatores/g,
+    /varios fatores/g,
+    /faz-se necessario/g,
+    /deve ser combatido/g,
+    /precisa ser resolvido/g,
+    /problema recorrente/g,
+    /esse cenario/g,
+    /essa problematica/g,
+  ]);
+
+  const concreteDataCount = countOccurrences(text, [
+    /\b\d{1,3}%\b/g,
+    /\b\d{4}\b/g,
+    /\b\d+(?:,\d+)?\b/g,
+    /\bibge\b/gi,
+    /\binep\b/gi,
+    /\bipea\b/gi,
+    /\bpnad\b/gi,
+    /\bunesco\b/gi,
+    /\boms\b/gi,
+    /\bdatafolha\b/gi,
+    /\bconstituicao federal\b/gi,
+    /\bestatuto\b/gi,
+    /\blei\b/gi,
+    /\bministerio da educacao\b/gi,
+  ]);
+
+  const strongRepertoireCount = countOccurrences(normalized, [
+    /constituicao federal/g,
+    /codigo penal/g,
+    /estatuto da crianca e do adolescente/g,
+    /ibge/g,
+    /inep/g,
+    /ipea/g,
+    /unesco/g,
+    /organizacao das nacoes unidas/g,
+    /machado de assis/g,
+    /carolina maria de jesus/g,
+    /milton santos/g,
+    /paulo freire/g,
+    /conceicao evaristo/g,
+    /zygmunt bauman/g,
+    /michel foucault/g,
+    /djamila ribeiro/g,
+  ]);
+
+  const repeatedExpressions = [
+    "problema social",
+    "falta de respeito",
+    "falta de empatia",
+    "na sociedade",
+    "na atualidade",
+    "desse modo",
+    "nesse sentido",
+  ];
+  const repetitionCount = repeatedExpressions.reduce((total, expression) => {
+    const matches = normalized.match(new RegExp(expression, "g"))?.length ?? 0;
+    return total + Math.max(matches - 1, 0);
+  }, 0);
+
+  return {
+    hasConcreteData: concreteDataCount >= 2,
+    hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 3,
+    hasGenericRepertoire: genericRepertoireCount >= 2,
+    hasGenericArgumentation: genericArgumentCount >= 3,
+    hasSophisticatedLanguage:
+      lexicalVariety >= 0.52 && averageWordLength >= 4.6 && connectorCount >= 3,
+    hasRepetitionProblem: repetitionCount >= 2,
+    isExceptionalEssay:
+      lexicalVariety >= 0.58 &&
+      averageWordLength >= 4.9 &&
+      connectorCount >= 4 &&
+      concreteDataCount >= 2 &&
+      strongRepertoireCount >= 1 &&
+      genericArgumentCount <= 1 &&
+      repetitionCount === 0,
+  };
+}
+
+function postProcessEvaluation(result: CorrectionResult, essayText: string) {
+  const processed: CorrectionResult = JSON.parse(JSON.stringify(result)) as CorrectionResult;
+  const signals = analyzeEssaySignals(essayText);
+
+  applyPenalty(
+    processed,
+    "competencia_2",
+    signals.hasStrongRepertoire && !signals.hasGenericRepertoire ? 200 : 160,
+    "O repertório apresentado não atingiu o nível de especificidade, aprofundamento e pertinência temática exigido para nota máxima.",
+    "Use dados concretos, leis, pesquisas, fatos históricos delimitados ou referências diretamente ligadas ao tema e explique a conexão com a tese.",
+  );
+
+  if (!signals.hasConcreteData) {
+    applyPenalty(
+      processed,
+      "competencia_2",
+      160,
+      "Houve ausência ou fragilidade de dados concretos, exemplos verificáveis ou referências consistentes para sustentar o repertório.",
+      "Inclua estatísticas, pesquisas, leis, episódios históricos delimitados ou exemplos sociais concretos para sustentar o argumento.",
+    );
+  }
+
+  if (signals.hasGenericArgumentation) {
+    applyPenalty(
+      processed,
+      "competencia_3",
+      160,
+      "A argumentação apresentou trechos genéricos e superficiais, com desenvolvimento crítico insuficiente.",
+      "Aprofunde as causas e consequências com análise mais específica, evitando fórmulas vagas e relações pouco explicadas.",
+    );
+  }
+
+  if (signals.hasRepetitionProblem) {
+    applyPenalty(
+      processed,
+      "competencia_3",
+      160,
+      "Foi identificada repetição de ideias e de fórmulas argumentativas, o que reduziu a progressão analítica do texto.",
+      "Varie os argumentos e avance na análise a cada parágrafo, evitando repetir o mesmo raciocínio com palavras diferentes.",
+    );
+    applyPenalty(
+      processed,
+      "competencia_4",
+      160,
+      "A repetição de construções e encadeamentos comprometeu a fluidez argumentativa.",
+      "Diversifique os conectivos e a articulação entre períodos para tornar a progressão textual mais refinada.",
+    );
+  }
+
+  if (!signals.hasSophisticatedLanguage) {
+    applyPenalty(
+      processed,
+      "competencia_1",
+      160,
+      "A linguagem não sustentou nível sofisticado e variado o suficiente para faixa máxima.",
+      "Amplie o repertório vocabular, varie as estruturas sintáticas e refine a precisão lexical para elevar o nível de formalidade e maturidade textual.",
+    );
+  }
+
+  const componentKeys = [
+    "competencia_1",
+    "competencia_2",
+    "competencia_3",
+    "competencia_4",
+    "competencia_5",
+  ] as const;
+
+  for (const key of componentKeys) {
+    const comp = processed[key];
+    if (comp) {
+      comp.nota = normalizeScore(comp.nota);
+    }
+  }
+
+  const sum =
+    (processed.competencia_1?.nota ?? 0) +
+    (processed.competencia_2?.nota ?? 0) +
+    (processed.competencia_3?.nota ?? 0) +
+    (processed.competencia_4?.nota ?? 0) +
+    (processed.competencia_5?.nota ?? 0);
+
+  processed.nota_final = sum;
+
+  if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
+    applyPenalty(
+      processed,
+      "competencia_2",
+      160,
+      "Apesar da boa construção do texto, o repertório não alcançou o nível excepcional exigido para um desempenho perfeito.",
+      "Para atingir a nota máxima, utilize repertório altamente específico, aprofundado e rigorosamente articulado ao tema.",
+    );
+    processed.nota_final =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+  }
+
+  if (!processed.resumo_geral) {
+    processed.resumo_geral =
+      "A redação apresentou qualidades relevantes, mas sofreu penalizações por critérios de rigor semelhantes aos de um corretor humano do ENEM.";
+  }
+
+  return processed;
 }
 
 function buildCorrectionPayload(
@@ -149,10 +435,14 @@ export async function POST(request: Request) {
       });
 
       const usageAfterCache = await getUsageSnapshot(supabase, profile);
+      const processedCached = postProcessEvaluation(
+        cachedCorrection.result,
+        normalizedText,
+      );
 
       return NextResponse.json(
         buildCorrectionPayload(
-          cachedCorrection.result,
+          processedCached,
           cachedCorrection.aiModel,
           cachedCorrection.cacheSource,
           usageAfterCache,
@@ -170,33 +460,60 @@ export async function POST(request: Request) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
     }
 
-    const promptMestre = `Você é um corretor SÊNIOR da banca do ENEM (INEP). Sua missão é ser JUSTO E IMPARCIAL.
+    const promptMestre = `Você é um corretor MUITO RIGOROSO do ENEM, treinado para simular corretores humanos experientes do INEP.
 
 TEMA DA REDAÇÃO: "${normalizedTheme}"
 
-1. REGRA DE OURO:
-Se o aluno demonstra vocabulário sofisticado, usa citações culturais e conecta argumentos com fluidez, valorize isso. Nesses casos, releve até 2 desvios gramaticais leves na C1 e valide o repertório da C2 como produtivo se houver conexão lógica. Se o texto é de alto nível, a nota final deve refletir isso.
+META DE DISTRIBUIÇÃO:
+- Redações boas: normalmente entre 800 e 920.
+- Redações muito boas: normalmente entre 920 e 960.
+- Nota 1000 deve ser raríssima e só pode aparecer em textos praticamente irretocáveis.
+- Evite inflar notas. Na dúvida entre 200 e 160, prefira 160.
 
-2. DETECTOR DE REPERTÓRIO CURINGA:
-- Se o texto focar apenas em filosofia ou história antiga e não trouxer dados, leis brasileiras atuais ou exemplos práticos da realidade do Brasil hoje, a nota da C2 e C3 deve ter teto de 120 ou 160.
-- Se a citação for jogada sem explicação, é repertório curinga: nota 120.
-- Se a citação for explicada e conectada ao tema, é repertório produtivo: nota 200.
+REGRA CENTRAL DE RIGOR:
+- Nota 200 em qualquer competência exige desempenho excepcional.
+- Não use 200 com facilidade.
+- Se houver qualquer traço relevante de genericidade, superficialidade, repetição ou repertório pouco aprofundado, reduza para 160.
 
-3. MATEMÁTICA DA CONCLUSÃO:
-- Conte 5 elementos: Agente, Ação, Meio/Modo, Efeito e Detalhamento.
-- Cada elemento vale 40 pontos.
-- Considere explicações sobre o papel do órgão como detalhamento válido.
+CRITÉRIOS PARA 200:
+1. Competência 1:
+- só dê 200 se a linguagem for sofisticada, variada, precisa e formal;
+- não pode haver construções pobres, repetitivas ou pouco refinadas;
+- se a linguagem apenas estiver correta, mas não sofisticada, use no máximo 160.
 
-4. GRADE OFICIAL:
-- C1 (Gramática): 0, 40, 80, 120, 160, 200
-- C2 (Repertório): 0, 40, 80, 120, 160, 200
-- C3 (Coerência): 0, 40, 80, 120, 160, 200
-- C4 (Coesão): 0, 40, 80, 120, 160, 200
-- C5 (Intervenção): 0, 40, 80, 120, 160, 200
+2. Competência 2:
+- só dê 200 se o repertório for específico, aprofundado, produtivo e diretamente relacionado ao tema;
+- é necessário explicar claramente como o repertório sustenta a tese;
+- repertório genérico, decorativo ou pouco aprofundado deve ficar em 120 ou 160;
+- se faltar dado concreto, exemplo verificável, referência social/histórica bem delimitada ou análise consistente, use no máximo 160.
 
-IMPORTANTE:
+3. Competência 3:
+- só dê 200 se a argumentação for crítica, densa e não genérica;
+- se o texto usar ideias vagas como “problema social”, “falta de respeito”, “é preciso conscientizar”, sem aprofundamento real, reduza a nota;
+- se os argumentos forem superficiais, repetitivos ou pouco desenvolvidos, use no máximo 160.
+
+4. Competência 4:
+- só dê 200 se a progressão textual for muito fluida, com excelente articulação entre períodos e parágrafos;
+- repetição de conectivos, encadeamento previsível ou progressão pouco refinada impede 200.
+
+5. Competência 5:
+- só dê 200 se a proposta de intervenção for completa, detalhada, bem articulada e plausível;
+- a intervenção precisa apresentar agente, ação, meio/modo, efeito e detalhamento consistente.
+
+PENALIZAÇÕES OBRIGATÓRIAS:
+- ausência de dados concretos ou repertório forte: limite C2 em 160;
+- argumentação genérica ou superficial: reduza C3;
+- repetição de ideias: reduza C3 e/ou C4;
+- linguagem apenas correta, mas sem sofisticação: limite C1 em 160;
+- justifique toda penalização de forma explícita na justificativa e na melhoria.
+
+ESCALA OFICIAL:
+- 0, 40, 80, 120, 160, 200
+- Use apenas esses valores.
+
+SAÍDA:
+- Retorne APENAS JSON puro.
 - A nota_final deve ser a soma exata das 5 competências.
-- Retorne ESTRITAMENTE um objeto JSON puro, sem texto fora do JSON.
 
 {
   "competencia_1": { "nota": 0, "justificativa": "", "melhoria": "" },
@@ -254,6 +571,7 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
     const jsonString = rawResponse.substring(startIdx, endIdx);
     const avaliacao = JSON.parse(jsonString) as CorrectionResult;
+    const processedEvaluation = postProcessEvaluation(avaliacao, normalizedText);
 
     await logUsageEvent({
       supabase,
@@ -270,7 +588,7 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
     const usageAfter = await getUsageSnapshot(supabase, profile);
 
     return NextResponse.json(
-      buildCorrectionPayload(avaliacao, selectedModel, "fresh", usageAfter),
+      buildCorrectionPayload(processedEvaluation, selectedModel, "fresh", usageAfter),
     );
   } catch {
     return NextResponse.json(
