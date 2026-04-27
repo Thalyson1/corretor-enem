@@ -25,6 +25,13 @@ export async function signInAction(
   });
 
   if (error) {
+    console.error("signInAction failed", {
+      email,
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      name: error.name,
+    });
     return {
       error: "Não foi possível entrar. Verifique suas credenciais.",
       success: null,
@@ -72,6 +79,16 @@ export async function signUpAction(
   });
 
   if (error) {
+    console.error("signUpAction failed", {
+      email,
+      fullName,
+      schoolName,
+      classGroup,
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      name: error.name,
+    });
     return {
       error: "Não foi possível criar a conta. Tente outro e-mail ou tente novamente.",
       success: null,

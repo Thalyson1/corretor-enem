@@ -753,6 +753,26 @@ function isKnownProviderFailure(error: unknown) {
   ].includes(error.message);
 }
 
+function buildErrorLog(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { error };
+  }
+
+  const cause =
+    error.cause instanceof Error
+      ? {
+          message: error.cause.message,
+          stack: error.cause.stack,
+        }
+      : error.cause;
+
+  return {
+    message: error.message,
+    stack: error.stack,
+    cause,
+  };
+}
+
 async function corrigirComFallback(
   prompt: string,
   chavesDisponiveis: string[],
@@ -1174,7 +1194,7 @@ REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
       buildCorrectionPayload(processedEvaluation, selectedModel, "fresh", usageAfter),
     );
   } catch (error) {
-    console.error("corrigir route failed", error);
+    console.error("corrigir route failed", buildErrorLog(error));
 
     if (isKnownProviderFailure(error)) {
       return NextResponse.json(
