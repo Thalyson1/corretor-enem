@@ -434,12 +434,29 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     hasValidIntervention &&
     !signals.hasSevereDevelopmentIssue;
 
-  if (shouldApplyStructuredEssayFloor && processed.nota_final < 800) {
+  if (shouldApplyStructuredEssayFloor && processed.nota_final < 840) {
     ensureMinimumScore(processed, "competencia_1", 160);
     ensureMinimumScore(processed, "competencia_3", 160);
     ensureMinimumScore(processed, "competencia_4", 160);
     ensureMinimumScore(processed, "competencia_5", 160);
     ensureMinimumScore(processed, "competencia_2", 160);
+
+    const structuredEssayTotal =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+
+    if (structuredEssayTotal < 840) {
+      if (!signals.hasGenericArgumentation) {
+        ensureMinimumScore(processed, "competencia_3", 200);
+      } else if (!signals.hasOnlyFunctionalCohesion) {
+        ensureMinimumScore(processed, "competencia_4", 200);
+      } else {
+        ensureMinimumScore(processed, "competencia_5", 200);
+      }
+    }
 
     processed.nota_final =
       (processed.competencia_1?.nota ?? 0) +
