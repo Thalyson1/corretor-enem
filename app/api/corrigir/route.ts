@@ -301,6 +301,11 @@ function analyzeEssaySignals(text: string) {
     hasExceptionalCohesion: connectorCount >= 5 && repetitionCount === 0,
     hasOnlyFunctionalCohesion:
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
+    hasRelevantRepertoire:
+      genericRepertoireCount === 0 &&
+      (strongRepertoireCount >= 1 || concreteDataCount >= 1),
+    hasConsistentArgumentation:
+      genericArgumentCount <= 1 && connectorCount >= 3 && repetitionCount <= 1,
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
@@ -476,10 +481,31 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
+  if (
+    signals.hasBasicEssayStructure &&
+    !signals.hasStrongRepertoire &&
+    processed.nota_final < 720
+  ) {
+    ensureMinimumScore(processed, "competencia_1", 120);
+    ensureMinimumScore(processed, "competencia_2", 120);
+    ensureMinimumScore(processed, "competencia_3", 160);
+    ensureMinimumScore(processed, "competencia_4", 160);
+    ensureMinimumScore(processed, "competencia_5", 160);
+
+    processed.nota_final =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+  }
+
   const hasValidIntervention = (processed.competencia_5?.nota ?? 0) >= 160;
   const shouldApplyStructuredEssayFloor =
     signals.hasCompleteEssayStructure &&
     signals.hasBasicCohesion &&
+    signals.hasConsistentArgumentation &&
+    signals.hasRelevantRepertoire &&
     hasValidIntervention &&
     !signals.hasSevereDevelopmentIssue;
 
@@ -579,6 +605,22 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       160,
       "A organização textual foi consistente, mas não suficientemente sofisticada para sustentar faixa tão elevada.",
       "Para alcançar notas acima de 960, a progressão entre ideias precisa ser muito refinada e praticamente impecável.",
+    );
+    processed.nota_final =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+  }
+
+  if (processed.nota_final > 920 && !signals.isExceptionalEssay && !canReachMaximumScore) {
+    applyPenalty(
+      processed,
+      signals.hasStrongRepertoire ? "competencia_3" : "competencia_2",
+      160,
+      "A redação apresentou bom desempenho global, mas ainda não atingiu o nível de excepcionalidade exigido para ultrapassar a faixa das redações boas.",
+      "Para entrar na faixa de excelência, aprofunde mais a argumentação e refine a articulação entre repertório, tese e desenvolvimento crítico.",
     );
     processed.nota_final =
       (processed.competencia_1?.nota ?? 0) +
