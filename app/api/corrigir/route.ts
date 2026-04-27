@@ -340,6 +340,16 @@ function analyzeEssaySignals(text: string) {
     /\bde modo a\b/g,
   ]);
 
+  const genericInterventionCount = countOccurrences(normalized, [
+    /\bconscientiza/g,
+    /\bcampanha/g,
+    /\bcampanhas/g,
+    /\bprojeto social/g,
+    /\bmedidas necessarias/g,
+    /\bmais investimentos/g,
+    /\bdebates nas escolas/g,
+  ]);
+
   const repeatedExpressions = [
     "problema social",
     "falta de respeito",
@@ -391,6 +401,12 @@ function analyzeEssaySignals(text: string) {
       interventionAgentCount >= 1 &&
       interventionActionCount >= 1 &&
       interventionIntentCount >= 1,
+    hasGenericIntervention: genericInterventionCount >= 2,
+    hasDetailedIntervention:
+      interventionAgentCount >= 1 &&
+      interventionActionCount >= 2 &&
+      interventionIntentCount >= 1 &&
+      genericInterventionCount === 0,
     hasCompleteIntervention:
       normalized.includes("por meio") ||
       normalized.includes("a fim de") ||
@@ -524,6 +540,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     ensureMinimumScore(processed, "competencia_5", 160);
   }
 
+  if (signals.hasGenericIntervention) {
+    applyPenalty(
+      processed,
+      "competencia_5",
+      160,
+      "A proposta de intervenção ficou genérica e pouco detalhada para sustentar a faixa máxima.",
+      "Detalhe melhor agente, ação, meio de execução e efeito esperado para tornar a proposta mais completa e consistente.",
+    );
+  }
+
   if (
     getPenaltyCount(processed) === 0 &&
     signals.hasLexicalRepetition &&
@@ -593,7 +619,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   if (
     signals.hasBasicEssayStructure &&
     !signals.hasStrongRepertoire &&
-    processed.nota_final < 720
+    (processed.nota_final ?? 0) < 720
   ) {
     ensureMinimumScore(processed, "competencia_1", 120);
     ensureMinimumScore(processed, "competencia_2", 120);
@@ -670,8 +696,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     signals.hasBasicCohesion &&
     signals.hasExceptionalLanguage &&
     signals.hasExceptionalArgumentation &&
-    (signals.hasStrongRepertoire || !signals.hasGenericRepertoire) &&
+    signals.hasExceptionalCohesion &&
+    signals.hasStrongRepertoire &&
+    !signals.hasGenericRepertoire &&
     signals.hasCompleteIntervention &&
+    signals.hasDetailedIntervention &&
     !signals.hasSevereDevelopmentIssue &&
     !signals.hasLexicalRepetition &&
     !signals.hasSimpleSyntax;
@@ -723,13 +752,13 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if (processed.nota_final > 920 && !signals.isExceptionalEssay && !canReachMaximumScore) {
+  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay && !canReachMaximumScore) {
     applyPenalty(
       processed,
-      signals.hasStrongRepertoire ? "competencia_3" : "competencia_2",
+      signals.hasGenericArgumentation ? "competencia_3" : "competencia_5",
       160,
-      "A redação apresentou bom desempenho global, mas ainda não atingiu o nível de excepcionalidade exigido para ultrapassar a faixa das redações boas.",
-      "Para entrar na faixa de excelência, aprofunde mais a argumentação e refine a articulação entre repertório, tese e desenvolvimento crítico.",
+      "A redação apresentou bom desempenho global, mas ainda não atingiu o nível de excelência exigido para ultrapassar a faixa das redações boas.",
+      "Para entrar na faixa de excelência, aprofunde mais a argumentação e detalhe melhor a proposta de intervenção, evitando generalizações.",
     );
     processed.nota_final =
       (processed.competencia_1?.nota ?? 0) +
