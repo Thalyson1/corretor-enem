@@ -156,6 +156,11 @@ function analyzeEssaySignals(text: string) {
     /problema recorrente/g,
     /esse cenario/g,
     /essa problematica/g,
+    /cultura de desrespeito/g,
+    /falta de respeito/g,
+    /e preciso conscientizar/g,
+    /ha negligencia/g,
+    /problema social/g,
   ]);
 
   const concreteDataCount = countOccurrences(text, [
@@ -212,17 +217,28 @@ function analyzeEssaySignals(text: string) {
     hasConcreteData: concreteDataCount >= 2,
     hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 3,
     hasGenericRepertoire: genericRepertoireCount >= 2,
-    hasGenericArgumentation: genericArgumentCount >= 3,
+    hasGenericArgumentation: genericArgumentCount >= 2,
     hasSophisticatedLanguage:
-      lexicalVariety >= 0.52 && averageWordLength >= 4.6 && connectorCount >= 3,
+      lexicalVariety >= 0.55 && averageWordLength >= 4.8 && connectorCount >= 4,
+    hasLexicalRepetition:
+      repetitionCount >= 2 || lexicalVariety < 0.5 || connectorCount <= 2,
+    hasSimpleSyntax:
+      averageWordLength < 4.7 || connectorCount <= 2,
     hasRepetitionProblem: repetitionCount >= 2,
+    hasExceptionalLanguage:
+      lexicalVariety >= 0.6 && averageWordLength >= 5 && connectorCount >= 5,
+    hasExceptionalArgumentation:
+      !genericArgumentCount && repetitionCount === 0 && connectorCount >= 4,
+    hasExceptionalCohesion: connectorCount >= 5 && repetitionCount === 0,
+    hasOnlyFunctionalCohesion:
+      connectorCount >= 2 && connectorCount < 5 && repetitionCount >= 1,
     isExceptionalEssay:
-      lexicalVariety >= 0.58 &&
-      averageWordLength >= 4.9 &&
-      connectorCount >= 4 &&
+      lexicalVariety >= 0.62 &&
+      averageWordLength >= 5 &&
+      connectorCount >= 5 &&
       concreteDataCount >= 2 &&
-      strongRepertoireCount >= 1 &&
-      genericArgumentCount <= 1 &&
+      strongRepertoireCount >= 2 &&
+      genericArgumentCount === 0 &&
       repetitionCount === 0,
   };
 }
@@ -286,6 +302,36 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
+  if (signals.hasGenericArgumentation || !signals.hasConcreteData) {
+    applyPenalty(
+      processed,
+      "competencia_3",
+      160,
+      "A argumentação apresentou genericidade, aprofundamento insuficiente ou sustentação concreta limitada, o que impede a faixa máxima.",
+      "Desenvolva relações causais e consequências de modo mais analítico, com recortes concretos, evidências e explicações menos genéricas.",
+    );
+  }
+
+  if (signals.hasOnlyFunctionalCohesion || signals.hasRepetitionProblem) {
+    applyPenalty(
+      processed,
+      "competencia_4",
+      160,
+      "A coesão foi funcional, mas apresentou repetição ou pouca variação nos mecanismos de articulação, o que impede a faixa máxima.",
+      "Aprimore a variedade de conectivos, a transição entre ideias e o refinamento do encadeamento argumentativo para alcançar maior sofisticação textual.",
+    );
+  }
+
+  if (!signals.hasSophisticatedLanguage || signals.hasLexicalRepetition || signals.hasSimpleSyntax) {
+    applyPenalty(
+      processed,
+      "competencia_1",
+      160,
+      "O domínio linguístico foi correto, mas não atingiu nível excepcional de variedade lexical e complexidade sintática.",
+      "Busque maior diversidade vocabular, períodos mais bem modulados e construções sintáticas mais complexas sem perder clareza.",
+    );
+  }
+
   const componentKeys = [
     "competencia_1",
     "competencia_2",
@@ -317,6 +363,22 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       160,
       "Apesar da boa construção do texto, o repertório não alcançou o nível excepcional exigido para um desempenho perfeito.",
       "Para atingir a nota máxima, utilize repertório altamente específico, aprofundado e rigorosamente articulado ao tema.",
+    );
+    processed.nota_final =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+  }
+
+  if (processed.nota_final > 960 && !signals.isExceptionalEssay) {
+    applyPenalty(
+      processed,
+      "competencia_4",
+      160,
+      "A organização textual foi consistente, mas não suficientemente sofisticada para sustentar faixa tão elevada.",
+      "Para alcançar notas acima de 960, a progressão entre ideias precisa ser muito refinada e praticamente impecável.",
     );
     processed.nota_final =
       (processed.competencia_1?.nota ?? 0) +
@@ -460,24 +522,25 @@ export async function POST(request: Request) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
     }
 
-    const promptMestre = `Você é um corretor MUITO RIGOROSO do ENEM, treinado para simular corretores humanos experientes do INEP.
+    const promptMestre = `Você é um corretor EXTREMAMENTE RIGOROSO do ENEM, treinado para simular corretores humanos experientes do INEP.
 
 TEMA DA REDAÇÃO: "${normalizedTheme}"
 
 META DE DISTRIBUIÇÃO:
-- Redações boas: normalmente entre 800 e 920.
-- Redações muito boas: normalmente entre 920 e 960.
-- Nota 1000 deve ser raríssima e só pode aparecer em textos praticamente irretocáveis.
+- A maioria das boas redações deve ficar entre 880 e 940.
+- Notas acima de 960 devem ser raras.
+- Nota 1000 deve ser extremamente rara e reservada a textos praticamente impecáveis.
 - Evite inflar notas. Na dúvida entre 200 e 160, prefira 160.
 
 REGRA CENTRAL DE RIGOR:
-- Nota 200 em qualquer competência exige desempenho excepcional.
+- Nota 200 em qualquer competência exige desempenho excepcional, raro e claramente acima da média.
 - Não use 200 com facilidade.
-- Se houver qualquer traço relevante de genericidade, superficialidade, repetição ou repertório pouco aprofundado, reduza para 160.
+- Se houver qualquer traço relevante de genericidade, superficialidade, repetição, repertório pouco aprofundado ou linguagem apenas correta, reduza para 160.
 
 CRITÉRIOS PARA 200:
 1. Competência 1:
 - só dê 200 se a linguagem for sofisticada, variada, precisa e formal;
+- só dê 200 se houver variação lexical rica e estruturas sintáticas complexas;
 - não pode haver construções pobres, repetitivas ou pouco refinadas;
 - se a linguagem apenas estiver correta, mas não sofisticada, use no máximo 160.
 
@@ -489,12 +552,14 @@ CRITÉRIOS PARA 200:
 
 3. Competência 3:
 - só dê 200 se a argumentação for crítica, densa e não genérica;
-- se o texto usar ideias vagas como “problema social”, “falta de respeito”, “é preciso conscientizar”, sem aprofundamento real, reduza a nota;
+- se o texto usar ideias vagas como “problema social”, “falta de respeito”, “cultura de desrespeito” ou “é preciso conscientizar”, sem aprofundamento real, reduza a nota;
 - se os argumentos forem superficiais, repetitivos ou pouco desenvolvidos, use no máximo 160.
 
 4. Competência 4:
 - só dê 200 se a progressão textual for muito fluida, com excelente articulação entre períodos e parágrafos;
-- repetição de conectivos, encadeamento previsível ou progressão pouco refinada impede 200.
+- mesmo com boa coesão, não dê 200 automaticamente;
+- repetição de conectivos, encadeamento previsível ou progressão pouco refinada impede 200;
+- se a coesão for boa, mas sem sofisticação real, use no máximo 160.
 
 5. Competência 5:
 - só dê 200 se a proposta de intervenção for completa, detalhada, bem articulada e plausível;
@@ -505,6 +570,7 @@ PENALIZAÇÕES OBRIGATÓRIAS:
 - argumentação genérica ou superficial: reduza C3;
 - repetição de ideias: reduza C3 e/ou C4;
 - linguagem apenas correta, mas sem sofisticação: limite C1 em 160;
+- boa coesão sem sofisticação real: limite C4 em 160;
 - justifique toda penalização de forma explícita na justificativa e na melhoria.
 
 ESCALA OFICIAL:
