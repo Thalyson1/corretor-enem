@@ -169,6 +169,27 @@ function getPenaltyCount(result: CorrectionResult) {
   ).length;
 }
 
+function getLowScoreCount(result: CorrectionResult) {
+  const components = [
+    result.competencia_1,
+    result.competencia_2,
+    result.competencia_3,
+    result.competencia_4,
+    result.competencia_5,
+  ];
+
+  return components.filter((component) => (component?.nota ?? 0) <= 120).length;
+}
+
+function recalculateFinalScore(result: CorrectionResult) {
+  result.nota_final =
+    (result.competencia_1?.nota ?? 0) +
+    (result.competencia_2?.nota ?? 0) +
+    (result.competencia_3?.nota ?? 0) +
+    (result.competencia_4?.nota ?? 0) +
+    (result.competencia_5?.nota ?? 0);
+}
+
 function tokenizeWords(text: string) {
   return text
     .toLowerCase()
@@ -273,6 +294,52 @@ function analyzeEssaySignals(text: string) {
     /djamila ribeiro/g,
   ]);
 
+  const repertoireReferenceCount = countOccurrences(normalized, [
+    /\bsegundo\b/g,
+    /\bde acordo com\b/g,
+    /\bconforme\b/g,
+    /\bfilosofo\b/g,
+    /\bsociologo\b/g,
+    /\bescritor\b/g,
+    /\bautor\b/g,
+    /\bconstituicao\b/g,
+    /\blei\b/g,
+  ]);
+
+  const interventionAgentCount = countOccurrences(normalized, [
+    /\bgoverno\b/g,
+    /\bestado\b/g,
+    /\bpoder publico\b/g,
+    /\bministerio\b/g,
+    /\bmec\b/g,
+    /\bescola\b/g,
+    /\bmidia\b/g,
+    /\bfamilia\b/g,
+    /\bsociedade civil\b/g,
+    /\bong\b/g,
+  ]);
+
+  const interventionActionCount = countOccurrences(normalized, [
+    /\bdeve\b/g,
+    /\bpromover\b/g,
+    /\bimplementar\b/g,
+    /\bcriar\b/g,
+    /\bampliar\b/g,
+    /\boferecer\b/g,
+    /\bfiscalizar\b/g,
+    /\brealizar\b/g,
+    /\binvestir\b/g,
+    /\bincentivar\b/g,
+  ]);
+
+  const interventionIntentCount = countOccurrences(normalized, [
+    /\bpara\b/g,
+    /\ba fim de\b/g,
+    /\bcom o objetivo de\b/g,
+    /\bvisando\b/g,
+    /\bde modo a\b/g,
+  ]);
+
   const repeatedExpressions = [
     "problema social",
     "falta de respeito",
@@ -290,6 +357,11 @@ function analyzeEssaySignals(text: string) {
   return {
     hasConcreteData: concreteDataCount >= 2,
     hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 2,
+    hasPertinentRepertoire:
+      strongRepertoireCount >= 1 ||
+      concreteDataCount >= 1 ||
+      genericRepertoireCount >= 1 ||
+      repertoireReferenceCount >= 1,
     hasGenericRepertoire: genericRepertoireCount >= 2,
     hasGenericArgumentation: genericArgumentCount >= 3,
     hasSophisticatedLanguage:
@@ -310,6 +382,10 @@ function analyzeEssaySignals(text: string) {
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
+    hasBasicIntervention:
+      interventionAgentCount >= 1 &&
+      interventionActionCount >= 1 &&
+      interventionIntentCount >= 1,
     hasCompleteIntervention:
       normalized.includes("por meio") ||
       normalized.includes("a fim de") ||
@@ -345,7 +421,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     applyPenalty(
       processed,
       "competencia_2",
-      signals.hasLexicalRepetition && signals.hasSimpleSyntax ? 120 : 160,
+      signals.hasPertinentRepertoire
+        ? 160
+        : signals.hasLexicalRepetition && signals.hasSimpleSyntax
+          ? 120
+          : 160,
       "Houve ausência ou fragilidade de dados concretos, exemplos verificáveis ou referências consistentes para sustentar o repertório.",
       "Inclua estatísticas, pesquisas, leis, episódios históricos delimitados ou exemplos sociais concretos para sustentar o argumento.",
     );
@@ -431,6 +511,14 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     ensureMinimumScore(processed, "competencia_4", 160);
   }
 
+  if (signals.hasPertinentRepertoire) {
+    ensureMinimumScore(processed, "competencia_2", 160);
+  }
+
+  if (signals.hasBasicIntervention) {
+    ensureMinimumScore(processed, "competencia_5", 160);
+  }
+
   if (
     getPenaltyCount(processed) === 0 &&
     signals.hasLexicalRepetition &&
@@ -443,6 +531,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       "O domínio linguístico foi correto, mas não atingiu nível excepcional de variedade lexical e complexidade sintática.",
       "Busque maior diversidade vocabular, períodos mais bem modulados e construções sintáticas mais complexas sem perder clareza.",
     );
+  }
+
+  if (getLowScoreCount(processed) > 1 && !signals.hasSevereDevelopmentIssue) {
+    if (signals.hasPertinentRepertoire) {
+      ensureMinimumScore(processed, "competencia_2", 160);
+    }
+
+    if (signals.hasBasicIntervention) {
+      ensureMinimumScore(processed, "competencia_5", 160);
+    }
   }
 
   const componentKeys = [
@@ -460,26 +558,31 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     }
   }
 
-  processed.nota_final =
-    (processed.competencia_1?.nota ?? 0) +
-    (processed.competencia_2?.nota ?? 0) +
-    (processed.competencia_3?.nota ?? 0) +
-    (processed.competencia_4?.nota ?? 0) +
-    (processed.competencia_5?.nota ?? 0);
+  recalculateFinalScore(processed);
 
-  if (signals.hasBasicEssayStructure && processed.nota_final < 480) {
+  if (signals.hasBasicEssayStructure && (processed.nota_final ?? 0) < 480) {
     ensureMinimumScore(processed, "competencia_1", 80);
     ensureMinimumScore(processed, "competencia_2", 120);
     ensureMinimumScore(processed, "competencia_3", 120);
     ensureMinimumScore(processed, "competencia_4", 120);
     ensureMinimumScore(processed, "competencia_5", 120);
 
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
+    recalculateFinalScore(processed);
+  }
+
+  const shouldApplyMedianEssayFloor =
+    signals.hasBasicEssayStructure &&
+    signals.hasPertinentRepertoire &&
+    signals.hasBasicIntervention &&
+    !signals.hasSevereDevelopmentIssue;
+
+  if (shouldApplyMedianEssayFloor && (processed.nota_final ?? 0) < 760) {
+    ensureMinimumScore(processed, "competencia_2", 160);
+    ensureMinimumScore(processed, "competencia_5", 160);
+    ensureMinimumScore(processed, "competencia_3", 160);
+    ensureMinimumScore(processed, "competencia_4", 160);
+    ensureMinimumScore(processed, "competencia_1", 120);
+    recalculateFinalScore(processed);
   }
 
   const hasValidIntervention = (processed.competencia_5?.nota ?? 0) >= 160;
@@ -489,7 +592,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     hasValidIntervention &&
     !signals.hasSevereDevelopmentIssue;
 
-  if (shouldApplyStructuredEssayFloor && processed.nota_final < 860) {
+  if (shouldApplyStructuredEssayFloor && (processed.nota_final ?? 0) < 860) {
     ensureMinimumScore(processed, "competencia_1", 160);
     ensureMinimumScore(processed, "competencia_3", 160);
     ensureMinimumScore(processed, "competencia_4", 160);
@@ -578,7 +681,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if (processed.nota_final > 960 && !signals.isExceptionalEssay) {
+  if ((processed.nota_final ?? 0) > 960 && !signals.isExceptionalEssay) {
     applyPenalty(
       processed,
       "competencia_4",
