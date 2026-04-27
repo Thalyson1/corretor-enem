@@ -130,6 +130,25 @@ function applyPenalty(
   }
 }
 
+function ensureMinimumScore(
+  result: CorrectionResult,
+  key: keyof Pick<
+    CorrectionResult,
+    "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+  >,
+  minimum: number,
+) {
+  const comp = result[key];
+
+  if (!comp) {
+    return;
+  }
+
+  if (comp.nota < minimum) {
+    comp.nota = normalizeScore(minimum);
+  }
+}
+
 function tokenizeWords(text: string) {
   return text
     .toLowerCase()
@@ -144,6 +163,10 @@ function countOccurrences(text: string, patterns: RegExp[]) {
 
 function analyzeEssaySignals(text: string) {
   const normalized = text.toLowerCase();
+  const paragraphCount = text
+    .split(/\n\s*\n|\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0).length;
   const words = tokenizeWords(text);
   const uniqueWords = new Set(words);
   const lexicalVariety = words.length > 0 ? uniqueWords.size / words.length : 0;
@@ -264,6 +287,8 @@ function analyzeEssaySignals(text: string) {
     hasExceptionalCohesion: connectorCount >= 5 && repetitionCount === 0,
     hasOnlyFunctionalCohesion:
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
+    hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
+    hasBasicCohesion: connectorCount >= 2,
     isExceptionalEssay:
       lexicalVariety >= 0.62 &&
       averageWordLength >= 5 &&
@@ -338,6 +363,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
+  if (!signals.hasLexicalRepetition && !signals.hasSimpleSyntax) {
+    ensureMinimumScore(processed, "competencia_1", 160);
+  }
+
   if (signals.hasGenericArgumentation && !signals.hasConcreteData) {
     applyPenalty(
       processed,
@@ -356,6 +385,14 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       "A coesão foi funcional, mas apresentou repetição ou pouca variação nos mecanismos de articulação, o que impede a faixa máxima.",
       "Aprimore a variedade de conectivos, a transição entre ideias e o refinamento do encadeamento argumentativo para alcançar maior sofisticação textual.",
     );
+  }
+
+  if (!signals.hasSevereDevelopmentIssue) {
+    ensureMinimumScore(processed, "competencia_3", 160);
+  }
+
+  if (signals.hasBasicCohesion && !signals.hasOnlyFunctionalCohesion) {
+    ensureMinimumScore(processed, "competencia_4", 160);
   }
 
   if (!signals.hasSophisticatedLanguage || signals.hasLexicalRepetition || signals.hasSimpleSyntax) {
@@ -389,6 +426,28 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     (processed.competencia_3?.nota ?? 0) +
     (processed.competencia_4?.nota ?? 0) +
     (processed.competencia_5?.nota ?? 0);
+
+  const hasValidIntervention = (processed.competencia_5?.nota ?? 0) >= 160;
+  const shouldApplyStructuredEssayFloor =
+    signals.hasCompleteEssayStructure &&
+    signals.hasBasicCohesion &&
+    hasValidIntervention &&
+    !signals.hasSevereDevelopmentIssue;
+
+  if (shouldApplyStructuredEssayFloor && processed.nota_final < 800) {
+    ensureMinimumScore(processed, "competencia_1", 160);
+    ensureMinimumScore(processed, "competencia_3", 160);
+    ensureMinimumScore(processed, "competencia_4", 160);
+    ensureMinimumScore(processed, "competencia_5", 160);
+    ensureMinimumScore(processed, "competencia_2", 160);
+
+    processed.nota_final =
+      (processed.competencia_1?.nota ?? 0) +
+      (processed.competencia_2?.nota ?? 0) +
+      (processed.competencia_3?.nota ?? 0) +
+      (processed.competencia_4?.nota ?? 0) +
+      (processed.competencia_5?.nota ?? 0);
+  }
 
   if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
     applyPenalty(
