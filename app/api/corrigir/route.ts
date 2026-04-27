@@ -248,21 +248,22 @@ function analyzeEssaySignals(text: string) {
     hasConcreteData: concreteDataCount >= 2,
     hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 3,
     hasGenericRepertoire: genericRepertoireCount >= 2,
-    hasGenericArgumentation: genericArgumentCount >= 2,
+    hasGenericArgumentation: genericArgumentCount >= 3,
     hasSophisticatedLanguage:
-      lexicalVariety >= 0.55 && averageWordLength >= 4.8 && connectorCount >= 4,
+      lexicalVariety >= 0.52 && averageWordLength >= 4.6 && connectorCount >= 3,
     hasLexicalRepetition:
-      repetitionCount >= 2 || lexicalVariety < 0.5 || connectorCount <= 2,
+      repetitionCount >= 3 || lexicalVariety < 0.47 || connectorCount <= 1,
     hasSimpleSyntax:
-      averageWordLength < 4.7 || connectorCount <= 2,
+      averageWordLength < 4.4 || connectorCount <= 1,
     hasRepetitionProblem: repetitionCount >= 2,
+    hasSevereDevelopmentIssue: genericArgumentCount >= 4 || repetitionCount >= 4,
     hasExceptionalLanguage:
       lexicalVariety >= 0.6 && averageWordLength >= 5 && connectorCount >= 5,
     hasExceptionalArgumentation:
       !genericArgumentCount && repetitionCount === 0 && connectorCount >= 4,
     hasExceptionalCohesion: connectorCount >= 5 && repetitionCount === 0,
     hasOnlyFunctionalCohesion:
-      connectorCount >= 2 && connectorCount < 5 && repetitionCount >= 1,
+      connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
     isExceptionalEssay:
       lexicalVariety >= 0.62 &&
       averageWordLength >= 5 &&
@@ -310,11 +311,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (signals.hasRepetitionProblem) {
+  if (signals.hasSevereDevelopmentIssue) {
     applyPenalty(
       processed,
       "competencia_3",
-      160,
+      120,
       "Foi identificada repetição de ideias e de fórmulas argumentativas, o que reduziu a progressão analítica do texto.",
       "Varie os argumentos e avance na análise a cada parágrafo, evitando repetir o mesmo raciocínio com palavras diferentes.",
     );
@@ -327,7 +328,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (!signals.hasSophisticatedLanguage) {
+  if (!signals.hasSophisticatedLanguage && (signals.hasLexicalRepetition || signals.hasSimpleSyntax)) {
     applyPenalty(
       processed,
       "competencia_1",
@@ -337,7 +338,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (signals.hasGenericArgumentation || !signals.hasConcreteData) {
+  if (signals.hasGenericArgumentation && !signals.hasConcreteData) {
     applyPenalty(
       processed,
       "competencia_3",
