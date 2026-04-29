@@ -1341,21 +1341,25 @@ ORIENTAÇÕES GERAIS:
 - use apenas as notas 0, 40, 80, 120, 160 e 200;
 - não seja motivacional na atribuição da nota;
 - não premie aparência de texto bom;
+- texto organizado não significa texto bom;
+- conectivos não garantem nota alta;
+- linguagem formal não garante excelência;
 - não confunda estrutura pronta com qualidade argumentativa;
 - não dê nota alta apenas porque há conectivos, citações ou linguagem formal;
 - não premie repertório coringa, decorativo ou forçado;
 - não penalize em cascata outras competências apenas por erros gramaticais, exceto quando prejudicarem a compreensão;
 - não confunda conectivos com boa argumentação;
 - se o texto for denso, filosófico ou abstrato, não o penalize por complexidade se houver coerência e profundidade real.
+- se houver dúvida entre duas faixas, escolha a menor.
 
 TEMA DA REDAÇÃO: "${normalizedTheme}"
 
 CRITÉRIOS ESSENCIAIS DE JULGAMENTO:
 - Competência 1: avalie gramática, concordância, regência, pontuação, acentuação, ortografia, clareza sintática e formalidade;
-- Competência 2: repertório só vale se for pertinente, produtivo e integrado à argumentação; citação decorativa não merece nota alta;
-- Competência 3: texto bonito sem explicar causas, consequências ou mecanismos deve ser penalizado; estrutura pronta não significa boa argumentação;
+- Competência 2: repertório só vale se for pertinente, produtivo e integrado à argumentação; citação sem conexão deve ser penalizada; repertório forçado ou decorativo tende a ficar no máximo em 120–160;
+- Competência 3: texto bonito sem explicar causas, consequências ou mecanismos deve ser penalizado; argumentos genéricos e explicações vagas tendem a ficar no máximo em 160; aprofundamento real exige causa + consequência + impacto;
 - Competência 4: não atribua 200 apenas por presença de conectivos; a coesão deve articular ideias de forma lógica e não mecânica;
-- Competência 5: proposta vaga não deve receber nota alta; agente e ação sem detalhamento normalmente não justificam 200.
+- Competência 5: proposta vaga não deve receber nota alta; campanhas ou conscientização genéricas tendem a ficar no máximo em 160; proposta detalhada com 5 elementos pode alcançar 180–200.
 
 META DE DISTRIBUIÇÃO:
 - A maioria das boas redações deve ficar entre 880 e 940.
@@ -1371,6 +1375,9 @@ REGRA CENTRAL DE RIGOR:
 REGRA CRÍTICA PARA 920+:
 - antes de atribuir nota final acima de 900, verifique se o repertório é realmente produtivo, se a argumentação aprofunda causas e consequências, se a proposta de intervenção é detalhada e se a linguagem apresenta poucos desvios relevantes;
 - se algum desses pontos falhar, evite nota acima de 900.
+
+REGRA CRÍTICA DE SUPERFICIALIDADE:
+- redações superficiais não podem ultrapassar 800, mesmo que bem escritas.
 
 CRITÉRIOS PARA 200:
 1. Competência 1:
@@ -1448,10 +1455,11 @@ RECALIBRAÇÃO FINAL OBRIGATÓRIA:
 - não premie repertório coringa, decorativo ou apenas citado;
 - não penalize em cascata outras competências por erros gramaticais;
 - não confunda conectivos com boa argumentação;
-- redação fraca tende a ficar em 500-650;
-- redação mediana tende a ficar em 700-800;
-- redação boa tende a ficar em 850-920;
-- redação excelente tende a ficar em 960-1000;
+- redação fraca tende a ficar em 500-640;
+- redação superficial ou mediana tende a ficar em 680-800;
+- redação boa tende a ficar em 820-900;
+- redação muito boa tende a ficar em 920-960;
+- nota 1000 exige excelência plena;
 - garanta que a nota_final seja a soma exata das 5 competências.
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
