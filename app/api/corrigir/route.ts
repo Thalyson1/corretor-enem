@@ -1335,9 +1335,27 @@ export async function POST(request: Request) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
     }
 
-    const promptMestre = `Você é um corretor EXTREMAMENTE RIGOROSO do ENEM, treinado para simular corretores humanos experientes do INEP.
+    const promptMestre = `Você é um corretor experiente de redações do ENEM. Sua tarefa é avaliar a redação de forma realista, justa e rigorosa, aproximando-se ao máximo de uma correção humana.
+
+ORIENTAÇÕES GERAIS:
+- use apenas as notas 0, 40, 80, 120, 160 e 200;
+- não seja motivacional na atribuição da nota;
+- não premie aparência de texto bom;
+- não confunda estrutura pronta com qualidade argumentativa;
+- não dê nota alta apenas porque há conectivos, citações ou linguagem formal;
+- não premie repertório coringa, decorativo ou forçado;
+- não penalize em cascata outras competências apenas por erros gramaticais, exceto quando prejudicarem a compreensão;
+- não confunda conectivos com boa argumentação;
+- se o texto for denso, filosófico ou abstrato, não o penalize por complexidade se houver coerência e profundidade real.
 
 TEMA DA REDAÇÃO: "${normalizedTheme}"
+
+CRITÉRIOS ESSENCIAIS DE JULGAMENTO:
+- Competência 1: avalie gramática, concordância, regência, pontuação, acentuação, ortografia, clareza sintática e formalidade;
+- Competência 2: repertório só vale se for pertinente, produtivo e integrado à argumentação; citação decorativa não merece nota alta;
+- Competência 3: texto bonito sem explicar causas, consequências ou mecanismos deve ser penalizado; estrutura pronta não significa boa argumentação;
+- Competência 4: não atribua 200 apenas por presença de conectivos; a coesão deve articular ideias de forma lógica e não mecânica;
+- Competência 5: proposta vaga não deve receber nota alta; agente e ação sem detalhamento normalmente não justificam 200.
 
 META DE DISTRIBUIÇÃO:
 - A maioria das boas redações deve ficar entre 880 e 940.
@@ -1349,6 +1367,10 @@ REGRA CENTRAL DE RIGOR:
 - Nota 200 em qualquer competência exige desempenho excepcional, raro e claramente acima da média.
 - Não use 200 com facilidade.
 - Se houver qualquer traço relevante de genericidade, superficialidade, repetição, repertório pouco aprofundado ou linguagem apenas correta, reduza para 160.
+
+REGRA CRÍTICA PARA 920+:
+- antes de atribuir nota final acima de 900, verifique se o repertório é realmente produtivo, se a argumentação aprofunda causas e consequências, se a proposta de intervenção é detalhada e se a linguagem apresenta poucos desvios relevantes;
+- se algum desses pontos falhar, evite nota acima de 900.
 
 CRITÉRIOS PARA 200:
 1. Competência 1:
@@ -1419,6 +1441,18 @@ SAÍDA:
     }
   ]
 }
+
+RECALIBRAÇÃO FINAL OBRIGATÓRIA:
+- não infle redações com estrutura pronta;
+- não subestime textos densos se houver coerência e profundidade;
+- não premie repertório coringa, decorativo ou apenas citado;
+- não penalize em cascata outras competências por erros gramaticais;
+- não confunda conectivos com boa argumentação;
+- redação fraca tende a ficar em 500-650;
+- redação mediana tende a ficar em 700-800;
+- redação boa tende a ficar em 850-920;
+- redação excelente tende a ficar em 960-1000;
+- garanta que a nota_final seja a soma exata das 5 competências.
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
