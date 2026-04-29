@@ -309,6 +309,9 @@ function analyzeEssaySignals(text: string) {
   ]);
 
   const strongRepertoireCount = countOccurrences(normalized, [
+    /gabriel o pensador/g,
+    /john locke/g,
+    /hans jonas/g,
     /constituicao federal/g,
     /codigo penal/g,
     /estatuto da crianca e do adolescente/g,
@@ -417,7 +420,12 @@ function analyzeEssaySignals(text: string) {
   return {
     hasConcreteSupport: concreteDataCount >= 1,
     hasConcreteData: concreteDataCount >= 2,
-    hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 2,
+    hasStrongRepertoire:
+      strongRepertoireCount >= 1 ||
+      concreteDataCount >= 2 ||
+      (repertoireReferenceCount >= 2 &&
+        explanationMarkerCount >= 3 &&
+        genericRepertoireCount === 0),
     hasPertinentRepertoire:
       strongRepertoireCount >= 1 ||
       concreteDataCount >= 1 ||
@@ -517,6 +525,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     signals.hasDevelopedArgumentation &&
     signals.hasCompleteIntervention &&
     signals.hasGoodCohesion;
+  const hasExcellentEssayFoundation =
+    hasHighQualityFoundation &&
+    !signals.hasSevereDevelopmentIssue &&
+    (signals.isExceptionalEssay ||
+      (signals.hasExceptionalLanguage &&
+        (signals.hasExceptionalArgumentation || signals.hasExceptionalCohesion)));
   const isVeryWeakEssay =
     !signals.hasBasicEssayStructure ||
     (signals.hasLowDensity &&
@@ -827,6 +841,26 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       "competencia_4",
       "competencia_2",
       "competencia_3",
+      "competencia_1",
+    ]);
+  }
+
+  if (hasHighQualityFoundation && (processed.nota_final ?? 0) < 880) {
+    raiseFinalScoreToMinimum(processed, 880, [
+      "competencia_2",
+      "competencia_3",
+      "competencia_5",
+      "competencia_4",
+      "competencia_1",
+    ]);
+  }
+
+  if (hasExcellentEssayFoundation && (processed.nota_final ?? 0) < 920) {
+    raiseFinalScoreToMinimum(processed, 920, [
+      "competencia_2",
+      "competencia_3",
+      "competencia_4",
+      "competencia_5",
       "competencia_1",
     ]);
   }
@@ -1464,6 +1498,7 @@ CALIBRAÇÃO:
 - texto genérico tende a ficar em 500–680, salvo se houver estrutura e algum desenvolvimento relevante;
 - redações superficiais não devem receber nota alta só porque parecem bem escritas;
 - repertório só vale quando é pertinente, explicado e integrado ao argumento;
+- repertório filosófico, histórico, literário, musical ou jurídico pode sustentar nota alta mesmo sem dados estatísticos, desde que esteja bem articulado ao tema;
 - argumentação forte exige desenvolvimento real de causas, consequências, mecanismos e impactos;
 - proposta de intervenção forte exige agente, ação, meio/modo, finalidade e detalhamento;
 - redações excelentes devem poder receber 920–1000 quando houver qualidade real de repertório, argumentação, coesão e intervenção;
@@ -1482,6 +1517,7 @@ ORIENTAÇÕES DE RIGOR:
 - coesão apenas funcional, repetitiva ou mecânica tende a ficar no máximo em 160 na Competência 4;
 - proposta genérica tende a ficar no máximo em 160 na Competência 5;
 - nota 200 em qualquer competência exige desempenho muito consistente e bem desenvolvido;
+- uma limitação pontual não deve derrubar drasticamente a nota global se o conjunto da redação for forte;
 - antes de atribuir nota final acima de 920, confirme repertório produtivo, argumentação consistente, boa coesão, intervenção detalhada e domínio linguístico sólido.
 
 SUGESTÕES DE REESCRITA:
