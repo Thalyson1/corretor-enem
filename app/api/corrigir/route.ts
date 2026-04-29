@@ -190,6 +190,36 @@ function recalculateFinalScore(result: CorrectionResult) {
     (result.competencia_5?.nota ?? 0);
 }
 
+function raiseFinalScoreToMinimum(
+  result: CorrectionResult,
+  minimum: number,
+  priority: Array<
+    keyof Pick<
+      CorrectionResult,
+      | "competencia_1"
+      | "competencia_2"
+      | "competencia_3"
+      | "competencia_4"
+      | "competencia_5"
+    >
+  >,
+) {
+  recalculateFinalScore(result);
+
+  for (const key of priority) {
+    const comp = result[key];
+
+    while (comp && (result.nota_final ?? 0) < minimum && comp.nota < 200) {
+      comp.nota = normalizeScore(comp.nota + 40);
+      recalculateFinalScore(result);
+    }
+
+    if ((result.nota_final ?? 0) >= minimum) {
+      return;
+    }
+  }
+}
+
 function tokenizeWords(text: string) {
   return text
     .toLowerCase()
@@ -487,6 +517,29 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     signals.hasDevelopedArgumentation &&
     signals.hasCompleteIntervention &&
     signals.hasGoodCohesion;
+  const isVeryWeakEssay =
+    !signals.hasBasicEssayStructure ||
+    (signals.hasLowDensity &&
+      !signals.hasBasicIntervention &&
+      signals.hasSimpleSyntax &&
+      !signals.hasConcreteSupport);
+  const canApplyAutomaticPenalty = (
+    key: keyof Pick<
+      CorrectionResult,
+      "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+    >,
+  ) => {
+    if (isVeryWeakEssay) {
+      return true;
+    }
+
+    const affectedCompetencies = new Set(penaltiesApplied.map((penalty) => penalty.competencia));
+    if (affectedCompetencies.has(key)) {
+      return true;
+    }
+
+    return affectedCompetencies.size < 2;
+  };
   const applyTrackedPenalty = (
     key: keyof Pick<
       CorrectionResult,
@@ -496,6 +549,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     reason: string,
     improvement: string,
   ) => {
+    if (!canApplyAutomaticPenalty(key)) {
+      return false;
+    }
+
     const before = processed[key]?.nota ?? 0;
     const changed = applyPenalty(processed, key, cap, reason, improvement);
 
@@ -521,6 +578,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     reason: string,
     improvement: string,
   ) => {
+    if (!canApplyAutomaticPenalty(key)) {
+      return false;
+    }
+
     const before = processed[key]?.nota ?? 0;
     const changed = reduceScore(processed, key, amount, reason, improvement);
 
@@ -758,6 +819,39 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   if (!processed.resumo_geral) {
     processed.resumo_geral =
       "A redação apresentou qualidades relevantes, mas sofreu penalizações por critérios de rigor semelhantes aos de um corretor humano do ENEM.";
+  }
+
+  if (signals.hasBasicEssayStructure && !isVeryWeakEssay && (processed.nota_final ?? 0) < 480) {
+    raiseFinalScoreToMinimum(processed, 480, [
+      "competencia_5",
+      "competencia_4",
+      "competencia_2",
+      "competencia_3",
+      "competencia_1",
+    ]);
+  }
+
+  if (
+    hasHighQualityFoundation &&
+    (beforeScores.nota_final ?? 0) >= 880 &&
+    (processed.nota_final ?? 0) < 880
+  ) {
+    const restoreTargets = [
+      ["competencia_1", beforeScores.competencia_1],
+      ["competencia_2", beforeScores.competencia_2],
+      ["competencia_3", beforeScores.competencia_3],
+      ["competencia_4", beforeScores.competencia_4],
+      ["competencia_5", beforeScores.competencia_5],
+    ] as const;
+
+    for (const [key, beforeScore] of restoreTargets) {
+      const comp = processed[key];
+      if (comp) {
+        comp.nota = normalizeScore(Math.max(comp.nota, beforeScore));
+      }
+    }
+
+    recalculateFinalScore(processed);
   }
 
   if (process.env.NODE_ENV !== "production") {
@@ -1348,7 +1442,7 @@ REGRAS GERAIS:
 - não confunda estrutura pronta com qualidade argumentativa;
 - não premie repertório coringa, decorativo ou apenas citado;
 - não penalize em cascata outras competências apenas por erros gramaticais, exceto quando eles prejudicarem a compreensão;
-- se houver dúvida entre duas faixas, escolha a menor.
+- reconheça qualidade real quando houver repertório produtivo, argumentação desenvolvida, boa coesão e intervenção consistente.
 
 PROCESSO DE CORREÇÃO:
 1. Classifique internamente a redação como fraca, mediana, boa, muito boa ou excelente.
@@ -1372,6 +1466,7 @@ CALIBRAÇÃO:
 - repertório só vale quando é pertinente, explicado e integrado ao argumento;
 - argumentação forte exige desenvolvimento real de causas, consequências, mecanismos e impactos;
 - proposta de intervenção forte exige agente, ação, meio/modo, finalidade e detalhamento;
+- redações excelentes devem poder receber 920–1000 quando houver qualidade real de repertório, argumentação, coesão e intervenção;
 - nota 1000 deve ser rara, mas possível.
 
 CRITÉRIOS POR COMPETÊNCIA:
@@ -1386,7 +1481,7 @@ ORIENTAÇÕES DE RIGOR:
 - argumentação superficial tende a ficar no máximo em 160 na Competência 3;
 - coesão apenas funcional, repetitiva ou mecânica tende a ficar no máximo em 160 na Competência 4;
 - proposta genérica tende a ficar no máximo em 160 na Competência 5;
-- nota 200 em qualquer competência exige desempenho claramente acima da média;
+- nota 200 em qualquer competência exige desempenho muito consistente e bem desenvolvido;
 - antes de atribuir nota final acima de 920, confirme repertório produtivo, argumentação consistente, boa coesão, intervenção detalhada e domínio linguístico sólido.
 
 SUGESTÕES DE REESCRITA:
