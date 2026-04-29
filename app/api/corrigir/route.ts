@@ -1352,6 +1352,39 @@ ORIENTAÇÕES GERAIS:
 - se o texto for denso, filosófico ou abstrato, não o penalize por complexidade se houver coerência e profundidade real.
 - se houver dúvida entre duas faixas, escolha a menor.
 
+PROCESSO OBRIGATÓRIO DE CORREÇÃO:
+ETAPA 1 — Classificação geral da redação:
+- classifique a redação em apenas um nível: Muito fraca, Fraca, Mediana, Boa, Muito boa ou Excelente;
+- baseie-se em profundidade da argumentação, qualidade do repertório, nível de detalhamento, originalidade e criticidade;
+- textos com estrutura bonita mas ideias superficiais não podem ficar acima de Mediana;
+- textos com análise profunda podem ser Boa, Muito boa ou Excelente;
+- registre essa percepção de forma implícita nas justificativas e no resumo geral.
+
+ETAPA 2 — Análise crítica obrigatória:
+- avalie internamente se o texto realmente explica causas e consequências;
+- avalie se o repertório é explicado ou apenas citado;
+- avalie se a argumentação é genérica ou aprofundada;
+- avalie se a proposta de intervenção é detalhada ou genérica;
+- se a maioria desses pontos for superficial, limite a redação como no máximo Mediana.
+
+ETAPA 3 — Limite de nota pela classificação:
+- Muito fraca: 0–400;
+- Fraca: 400–640;
+- Mediana: 640–800;
+- Boa: 800–880;
+- Muito boa: 880–920;
+- Excelente: 920–1000;
+- nunca ultrapasse o limite da classificação geral.
+
+ETAPA 4 — Correção por competência:
+- C2: repertório decorativo ou apenas citado tende a no máximo 160;
+- C3: argumentação superficial tende a no máximo 160;
+- C5: proposta genérica tende a no máximo 160.
+
+ETAPA 5 — Verificação final:
+- se a redação for superficial, ou tiver repertório mal usado, ou tiver argumentação genérica, não permita nota acima de 800;
+- se houver inconsistência entre nota e qualidade real do texto, ajuste para baixo.
+
 TEMA DA REDAÇÃO: "${normalizedTheme}"
 
 CRITÉRIOS ESSENCIAIS DE JULGAMENTO:
