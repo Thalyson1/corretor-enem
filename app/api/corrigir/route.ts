@@ -190,6 +190,36 @@ function recalculateFinalScore(result: CorrectionResult) {
     (result.competencia_5?.nota ?? 0);
 }
 
+function capFinalScore(
+  result: CorrectionResult,
+  maximum: number,
+  priority: Array<
+    keyof Pick<
+      CorrectionResult,
+      | "competencia_1"
+      | "competencia_2"
+      | "competencia_3"
+      | "competencia_4"
+      | "competencia_5"
+    >
+  >,
+) {
+  recalculateFinalScore(result);
+
+  for (const key of priority) {
+    const comp = result[key];
+
+    while (comp && (result.nota_final ?? 0) > maximum && comp.nota > 0) {
+      comp.nota = normalizeScore(comp.nota - 40);
+      recalculateFinalScore(result);
+    }
+
+    if ((result.nota_final ?? 0) <= maximum) {
+      return;
+    }
+  }
+}
+
 function tokenizeWords(text: string) {
   return text
     .toLowerCase()
@@ -394,6 +424,11 @@ function analyzeEssaySignals(text: string) {
       (strongRepertoireCount >= 1 || concreteDataCount >= 1),
     hasConsistentArgumentation:
       genericArgumentCount <= 1 && connectorCount >= 3 && repetitionCount <= 1,
+    hasLowDensity:
+      genericArgumentCount >= 3 &&
+      concreteDataCount === 0 &&
+      strongRepertoireCount === 0 &&
+      repertoireReferenceCount === 0,
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
@@ -589,9 +624,48 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     }
   }
 
+  if (signals.hasLowDensity) {
+    applyPenalty(
+      processed,
+      "competencia_2",
+      120,
+      "Foi identificada baixa densidade argumentativa, com repertório sociocultural ausente, frágil ou pouco relevante para sustentar a discussão.",
+      "Inclua repertório sociocultural realmente pertinente e explique de forma clara como ele sustenta a tese defendida.",
+    );
+    applyPenalty(
+      processed,
+      "competencia_3",
+      120,
+      "A argumentação permaneceu genérica, com afirmações pouco desenvolvidas e explicação insuficiente de causas, consequências e exemplos concretos.",
+      "Desenvolva melhor cada argumento, explicando mecanismos, impactos e exemplos concretos em vez de apenas afirmar o problema.",
+    );
+    applyPenalty(
+      processed,
+      "competencia_4",
+      120,
+      "A organização do texto não compensou a baixa densidade analítica, o que impediu uma progressão argumentativa mais consistente.",
+      "Use a coesão para aprofundar o raciocínio, articulando melhor explicações, exemplos e desdobramentos dos argumentos.",
+    );
+    applyPenalty(
+      processed,
+      "competencia_5",
+      120,
+      "A proposta de intervenção não superou o nível genérico exigido para uma redação com baixa densidade argumentativa.",
+      "Detalhe melhor agente, ação, meio e finalidade, conectando a proposta aos problemas discutidos no desenvolvimento.",
+    );
+    recalculateFinalScore(processed);
+    capFinalScore(processed, 640, [
+      "competencia_4",
+      "competencia_5",
+      "competencia_1",
+      "competencia_2",
+      "competencia_3",
+    ]);
+  }
+
   recalculateFinalScore(processed);
 
-  if (signals.hasBasicEssayStructure && (processed.nota_final ?? 0) < 480) {
+  if (signals.hasBasicEssayStructure && !signals.hasLowDensity && (processed.nota_final ?? 0) < 480) {
     ensureMinimumScore(processed, "competencia_1", 80);
     ensureMinimumScore(processed, "competencia_2", 120);
     ensureMinimumScore(processed, "competencia_3", 120);
@@ -603,6 +677,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   const shouldApplyMedianEssayFloor =
     signals.hasBasicEssayStructure &&
+    !signals.hasLowDensity &&
     signals.hasPertinentRepertoire &&
     signals.hasBasicIntervention &&
     !signals.hasSevereDevelopmentIssue;
@@ -618,6 +693,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   if (
     signals.hasBasicEssayStructure &&
+    !signals.hasLowDensity &&
     !signals.hasStrongRepertoire &&
     (processed.nota_final ?? 0) < 720
   ) {
@@ -638,6 +714,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   const hasValidIntervention = (processed.competencia_5?.nota ?? 0) >= 160;
   const shouldApplyStructuredEssayFloor =
     signals.hasCompleteEssayStructure &&
+    !signals.hasLowDensity &&
     signals.hasBasicCohesion &&
     signals.hasConsistentArgumentation &&
     signals.hasRelevantRepertoire &&
@@ -693,6 +770,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   const canReachMaximumScore =
     signals.hasCompleteEssayStructure &&
+    !signals.hasLowDensity &&
     signals.hasBasicCohesion &&
     signals.hasExceptionalLanguage &&
     signals.hasExceptionalArgumentation &&
@@ -766,6 +844,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_3?.nota ?? 0) +
       (processed.competencia_4?.nota ?? 0) +
       (processed.competencia_5?.nota ?? 0);
+  }
+
+  if (signals.hasLowDensity && (processed.nota_final ?? 0) > 640) {
+    capFinalScore(processed, 640, [
+      "competencia_4",
+      "competencia_5",
+      "competencia_1",
+      "competencia_2",
+      "competencia_3",
+    ]);
   }
 
   if (!processed.resumo_geral) {
@@ -1366,6 +1454,18 @@ ETAPA 2 — Análise crítica obrigatória:
 - avalie se a argumentação é genérica ou aprofundada;
 - avalie se a proposta de intervenção é detalhada ou genérica;
 - se a maioria desses pontos for superficial, limite a redação como no máximo Mediana.
+
+ETAPA CRÍTICA — DETECÇÃO DE BAIXA DENSIDADE:
+- verifique se há repertório sociocultural relevante;
+- verifique se o texto realmente explica causas e consequências;
+- verifique se há exemplos concretos ou apenas generalizações;
+- verifique se a argumentação desenvolve ideias ou apenas afirma;
+- se a maioria das respostas for não, classifique automaticamente a redação como Fraca ou Mediana baixa;
+- nesse caso, limite a nota final em no máximo 640;
+- estrutura correta não é suficiente para nota média;
+- textos genéricos não podem ultrapassar 640;
+- ausência de repertório relevante limita a Competência 2 a no máximo 120;
+- argumentação superficial limita a Competência 3 a no máximo 120.
 
 ETAPA 3 — Limite de nota pela classificação:
 - Muito fraca: 0–400;
