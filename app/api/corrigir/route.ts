@@ -126,14 +126,17 @@ function applyPenalty(
   const comp = result[key];
 
   if (!comp) {
-    return;
+    return false;
   }
 
   if (comp.nota > cap) {
     comp.nota = normalizeScore(cap);
     comp.justificativa = appendPenaltyText(comp.justificativa, reason);
     comp.melhoria = appendPenaltyText(comp.melhoria, improvement);
+    return true;
   }
+
+  return false;
 }
 
 function ensureMinimumScore(
@@ -403,6 +406,7 @@ function analyzeEssaySignals(text: string) {
   }, 0);
 
   return {
+    hasConcreteSupport: concreteDataCount >= 1,
     hasConcreteData: concreteDataCount >= 2,
     hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 2,
     hasPertinentRepertoire:
@@ -437,14 +441,21 @@ function analyzeEssaySignals(text: string) {
       explanationMarkerCount <= 2,
     hasConsistentArgumentation:
       genericArgumentCount <= 1 && connectorCount >= 3 && repetitionCount <= 1,
+    hasDevelopedArgumentation:
+      explanationMarkerCount >= 3 &&
+      genericArgumentCount <= 1 &&
+      repetitionCount <= 1,
+    hasGoodCohesion: connectorCount >= 3 && !repetitionCount,
     hasSuperficialDevelopment:
       genericArgumentCount >= 2 &&
       explanationMarkerCount <= 2 &&
       concreteDataCount === 0,
     hasLowDensity:
-      (strongRepertoireCount === 0 || repertoireReferenceCount >= 1) &&
-      genericArgumentCount >= 2 &&
+      strongRepertoireCount === 0 &&
       concreteDataCount === 0 &&
+      explanationMarkerCount < 3 &&
+      paragraphCount < 4 &&
+      genericArgumentCount >= 2 &&
       (repertoireReferenceCount === 0 || explanationMarkerCount <= 2),
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
@@ -477,22 +488,67 @@ function analyzeEssaySignals(text: string) {
 function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   const processed: CorrectionResult = JSON.parse(JSON.stringify(result)) as CorrectionResult;
   const signals = analyzeEssaySignals(essayText);
+  const beforeScores = {
+    competencia_1: result.competencia_1?.nota ?? 0,
+    competencia_2: result.competencia_2?.nota ?? 0,
+    competencia_3: result.competencia_3?.nota ?? 0,
+    competencia_4: result.competencia_4?.nota ?? 0,
+    competencia_5: result.competencia_5?.nota ?? 0,
+    nota_final: result.nota_final ?? 0,
+  };
+  const penaltiesApplied: Array<{
+    competencia: string;
+    from: number;
+    to: number;
+    cap: number;
+    reason: string;
+  }> = [];
+  const hasHighQualityFoundation =
+    signals.hasCompleteEssayStructure &&
+    (signals.hasStrongRepertoire || signals.hasConcreteSupport) &&
+    signals.hasDevelopedArgumentation &&
+    signals.hasCompleteIntervention &&
+    signals.hasGoodCohesion;
+  const applyTrackedPenalty = (
+    key: keyof Pick<
+      CorrectionResult,
+      "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+    >,
+    cap: number,
+    reason: string,
+    improvement: string,
+  ) => {
+    const before = processed[key]?.nota ?? 0;
+    const changed = applyPenalty(processed, key, cap, reason, improvement);
+
+    if (changed) {
+      penaltiesApplied.push({
+        competencia: key,
+        from: before,
+        to: processed[key]?.nota ?? before,
+        cap,
+        reason,
+      });
+    }
+
+    return changed;
+  };
   processed.sugestoes_reescrita = normalizeSuggestions(
     processed.sugestoes_reescrita,
     essayText,
   );
 
-  applyPenalty(
-    processed,
-    "competencia_2",
-    signals.hasStrongRepertoire && !signals.hasGenericRepertoire ? 200 : 160,
-    "O repertório apresentado não atingiu o nível de especificidade, aprofundamento e pertinência temática exigido para nota máxima.",
-    "Use dados concretos, leis, pesquisas, fatos históricos delimitados ou referências diretamente ligadas ao tema e explique a conexão com a tese.",
-  );
+  if (!signals.hasStrongRepertoire && !signals.hasConcreteSupport) {
+    applyTrackedPenalty(
+      "competencia_2",
+      160,
+      "O repertório apresentado não atingiu o nível de especificidade, aprofundamento e pertinência temática exigido para nota máxima.",
+      "Use dados concretos, leis, pesquisas, fatos históricos delimitados ou referências diretamente ligadas ao tema e explique a conexão com a tese.",
+    );
+  }
 
   if (!signals.hasConcreteData && signals.hasGenericRepertoire) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_2",
       signals.hasPertinentRepertoire
         ? 160
@@ -505,8 +561,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasDecorativeRepertoire) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_2",
       120,
       "O repertório foi apenas citado ou mencionado de forma decorativa, sem explicação suficiente de sua relação com o tema e com a tese.",
@@ -515,8 +570,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasGenericArgumentation) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_3",
       160,
       "A argumentação apresentou trechos genéricos e superficiais, com desenvolvimento crítico insuficiente.",
@@ -525,8 +579,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasSuperficialDevelopment) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_3",
       120,
       "Os argumentos permaneceram superficiais, com generalizações frequentes e pouco desenvolvimento de causas, consequências ou mecanismos do problema.",
@@ -535,15 +588,13 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasSevereDevelopmentIssue) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_3",
       120,
       "Foi identificada repetição de ideias e de fórmulas argumentativas, o que reduziu a progressão analítica do texto.",
       "Varie os argumentos e avance na análise a cada parágrafo, evitando repetir o mesmo raciocínio com palavras diferentes.",
     );
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_4",
       160,
       "A repetição de construções e encadeamentos comprometeu a fluidez argumentativa.",
@@ -556,8 +607,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     !signals.hasSophisticatedLanguage &&
     (signals.hasLexicalRepetition || signals.hasSimpleSyntax)
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_1",
       signals.hasLexicalRepetition && signals.hasSimpleSyntax ? 120 : 160,
       "A linguagem não sustentou nível sofisticado e variado o suficiente para faixa máxima.",
@@ -570,8 +620,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     signals.hasGenericArgumentation &&
     !signals.hasConcreteData
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_3",
       160,
       "A argumentação apresentou genericidade, aprofundamento insuficiente ou sustentação concreta limitada, o que impede a faixa máxima.",
@@ -583,8 +632,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     getPenaltyCount(processed) < 2 &&
     (signals.hasOnlyFunctionalCohesion || signals.hasRepetitionProblem)
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_4",
       160,
       "A coesão foi funcional, mas apresentou repetição ou pouca variação nos mecanismos de articulação, o que impede a faixa máxima.",
@@ -593,8 +641,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasGenericIntervention) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_5",
       160,
       "A proposta de intervenção ficou genérica e pouco detalhada para sustentar a faixa máxima.",
@@ -607,8 +654,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     signals.hasLexicalRepetition &&
     signals.hasSimpleSyntax
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_1",
       120,
       "O domínio linguístico foi correto, mas não atingiu nível excepcional de variedade lexical e complexidade sintática.",
@@ -631,30 +677,26 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     }
   }
 
-  if (signals.hasLowDensity) {
-    applyPenalty(
-      processed,
+  if (signals.hasLowDensity && !hasHighQualityFoundation) {
+    applyTrackedPenalty(
       "competencia_2",
       signals.hasDecorativeRepertoire ? 120 : 160,
       "Foi identificada baixa densidade argumentativa, com repertório sociocultural frágil, decorativo ou insuficientemente desenvolvido para sustentar a discussão.",
       "Use repertório sociocultural pertinente e desenvolva melhor a relação dele com o tema, evitando apenas citar autores, leis ou conceitos.",
     );
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_3",
       signals.hasSuperficialDevelopment ? 120 : 160,
       "A argumentação permaneceu genérica, com afirmações pouco desenvolvidas e explicação insuficiente de causas, consequências e exemplos concretos.",
       "Desenvolva melhor cada argumento, explicando mecanismos, impactos e exemplos concretos em vez de apenas afirmar o problema.",
     );
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_4",
       120,
       "A organização do texto não compensou a baixa densidade analítica, o que impediu uma progressão argumentativa mais consistente.",
       "Use a coesão para aprofundar o raciocínio, articulando melhor explicações, exemplos e desdobramentos dos argumentos.",
     );
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_5",
       120,
       "A proposta de intervenção não superou o nível genérico exigido para uma redação com baixa densidade argumentativa.",
@@ -683,8 +725,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_2",
       160,
       "Apesar da boa construção do texto, o repertório não alcançou o nível excepcional exigido para um desempenho perfeito.",
@@ -698,9 +739,8 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if ((processed.nota_final ?? 0) > 960 && !signals.isExceptionalEssay) {
-    applyPenalty(
-      processed,
+  if ((processed.nota_final ?? 0) > 960 && !signals.isExceptionalEssay && !hasHighQualityFoundation) {
+    applyTrackedPenalty(
       "competencia_4",
       160,
       "A organização textual foi consistente, mas não suficientemente sofisticada para sustentar faixa tão elevada.",
@@ -714,9 +754,8 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay) {
-    applyPenalty(
-      processed,
+  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay && !hasHighQualityFoundation) {
+    applyTrackedPenalty(
       signals.hasGenericArgumentation ? "competencia_3" : "competencia_5",
       160,
       "A redação apresentou bom desempenho global, mas ainda não atingiu o nível de excelência exigido para ultrapassar a faixa das redações boas.",
@@ -732,6 +771,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   if (
     signals.hasLowDensity &&
+    !hasHighQualityFoundation &&
     (processed.nota_final ?? 0) > (signals.hasDecorativeRepertoire ? 640 : 680)
   ) {
     capFinalScore(processed, signals.hasDecorativeRepertoire ? 640 : 680, [
@@ -746,6 +786,22 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   if (!processed.resumo_geral) {
     processed.resumo_geral =
       "A redação apresentou qualidades relevantes, mas sofreu penalizações por critérios de rigor semelhantes aos de um corretor humano do ENEM.";
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("postProcessEvaluation debug", {
+      beforeScores,
+      afterScores: {
+        competencia_1: processed.competencia_1?.nota ?? 0,
+        competencia_2: processed.competencia_2?.nota ?? 0,
+        competencia_3: processed.competencia_3?.nota ?? 0,
+        competencia_4: processed.competencia_4?.nota ?? 0,
+        competencia_5: processed.competencia_5?.nota ?? 0,
+        nota_final: processed.nota_final ?? 0,
+      },
+      signals,
+      penaltiesApplied,
+    });
   }
 
   return processed;
