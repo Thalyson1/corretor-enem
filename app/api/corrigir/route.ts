@@ -1494,6 +1494,11 @@ FAIXAS DE REFERÊNCIA:
 - muito boa: 920–960;
 - excelente: 960–1000.
 
+DEFINIÇÃO DE QUALIDADE:
+- redação boa (800–880): possui estrutura completa, argumentação clara e repertório pertinente, mesmo que não muito aprofundado;
+- redação muito boa (880–920): apresenta repertório produtivo, argumentação consistente e proposta de intervenção válida, mesmo com pequenas falhas;
+- redação excelente (920–1000): apresenta alto nível de aprofundamento, repertório bem integrado e proposta detalhada.
+
 CALIBRAÇÃO:
 - texto genérico tende a ficar em 500–680, salvo se houver estrutura e algum desenvolvimento relevante;
 - redações superficiais não devem receber nota alta só porque parecem bem escritas;
@@ -1502,6 +1507,8 @@ CALIBRAÇÃO:
 - argumentação forte exige desenvolvimento real de causas, consequências, mecanismos e impactos;
 - proposta de intervenção forte exige agente, ação, meio/modo, finalidade e detalhamento;
 - redações excelentes devem poder receber 920–1000 quando houver qualidade real de repertório, argumentação, coesão e intervenção;
+- não exija perfeição para notas acima de 880;
+- pequenas falhas não devem derrubar uma redação boa ou muito boa para faixas muito baixas;
 - nota 1000 deve ser rara, mas possível.
 
 CRITÉRIOS POR COMPETÊNCIA:
@@ -1512,13 +1519,17 @@ CRITÉRIOS POR COMPETÊNCIA:
 - Competência 5: avalie a proposta de intervenção. Proposta vaga ou genérica não deve receber nota alta.
 
 ORIENTAÇÕES DE RIGOR:
+- repertório pertinente, mesmo sem sofisticação excepcional, já pode sustentar 160 na Competência 2 e, se for bem integrado, pode sustentar nota mais alta;
 - repertório decorativo ou pouco explicado tende a ficar no máximo em 160 na Competência 2;
+- se houver causa, consequência e explicação clara, considere a argumentação como boa; não a classifique como superficial apenas por não ser extremamente aprofundada;
 - argumentação superficial tende a ficar no máximo em 160 na Competência 3;
 - coesão apenas funcional, repetitiva ou mecânica tende a ficar no máximo em 160 na Competência 4;
+- proposta válida com agente e ação já pode sustentar 160 na Competência 5; maior detalhamento pode elevar ainda mais a nota;
 - proposta genérica tende a ficar no máximo em 160 na Competência 5;
 - nota 200 em qualquer competência exige desempenho muito consistente e bem desenvolvido;
 - uma limitação pontual não deve derrubar drasticamente a nota global se o conjunto da redação for forte;
 - antes de atribuir nota final acima de 920, confirme repertório produtivo, argumentação consistente, boa coesão, intervenção detalhada e domínio linguístico sólido.
+- se a redação tiver estrutura completa, repertório pertinente, argumentação clara e proposta de intervenção válida, não a classifique como fraca e não atribua nota abaixo de 800.
 
 SUGESTÕES DE REESCRITA:
 - selecione até 3 trechos reais da redação que precisam de melhoria;
