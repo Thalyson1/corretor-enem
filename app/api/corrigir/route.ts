@@ -139,23 +139,32 @@ function applyPenalty(
   return false;
 }
 
-function ensureMinimumScore(
+function reduceScore(
   result: CorrectionResult,
   key: keyof Pick<
     CorrectionResult,
     "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
   >,
-  minimum: number,
+  amount: number,
+  reason: string,
+  improvement: string,
 ) {
   const comp = result[key];
 
   if (!comp) {
-    return;
+    return false;
   }
 
-  if (comp.nota < minimum) {
-    comp.nota = normalizeScore(minimum);
+  const nextScore = Math.max(0, comp.nota - amount);
+
+  if (nextScore < comp.nota) {
+    comp.nota = normalizeScore(nextScore);
+    comp.justificativa = appendPenaltyText(comp.justificativa, reason);
+    comp.melhoria = appendPenaltyText(comp.melhoria, improvement);
+    return true;
   }
+
+  return false;
 }
 
 function getPenaltyCount(result: CorrectionResult) {
@@ -179,36 +188,6 @@ function recalculateFinalScore(result: CorrectionResult) {
     (result.competencia_3?.nota ?? 0) +
     (result.competencia_4?.nota ?? 0) +
     (result.competencia_5?.nota ?? 0);
-}
-
-function capFinalScore(
-  result: CorrectionResult,
-  maximum: number,
-  priority: Array<
-    keyof Pick<
-      CorrectionResult,
-      | "competencia_1"
-      | "competencia_2"
-      | "competencia_3"
-      | "competencia_4"
-      | "competencia_5"
-    >
-  >,
-) {
-  recalculateFinalScore(result);
-
-  for (const key of priority) {
-    const comp = result[key];
-
-    while (comp && (result.nota_final ?? 0) > maximum && comp.nota > 0) {
-      comp.nota = normalizeScore(comp.nota - 40);
-      recalculateFinalScore(result);
-    }
-
-    if ((result.nota_final ?? 0) <= maximum) {
-      return;
-    }
-  }
 }
 
 function tokenizeWords(text: string) {
@@ -453,10 +432,8 @@ function analyzeEssaySignals(text: string) {
     hasLowDensity:
       strongRepertoireCount === 0 &&
       concreteDataCount === 0 &&
-      explanationMarkerCount < 3 &&
-      paragraphCount < 4 &&
       genericArgumentCount >= 2 &&
-      (repertoireReferenceCount === 0 || explanationMarkerCount <= 2),
+      explanationMarkerCount <= 2,
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
@@ -500,7 +477,8 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     competencia: string;
     from: number;
     to: number;
-    cap: number;
+    type: "cap" | "reduction";
+    amount: number;
     reason: string;
   }> = [];
   const hasHighQualityFoundation =
@@ -526,7 +504,33 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
         competencia: key,
         from: before,
         to: processed[key]?.nota ?? before,
-        cap,
+        type: "cap",
+        amount: before - (processed[key]?.nota ?? before),
+        reason,
+      });
+    }
+
+    return changed;
+  };
+  const applyTrackedReduction = (
+    key: keyof Pick<
+      CorrectionResult,
+      "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+    >,
+    amount: number,
+    reason: string,
+    improvement: string,
+  ) => {
+    const before = processed[key]?.nota ?? 0;
+    const changed = reduceScore(processed, key, amount, reason, improvement);
+
+    if (changed) {
+      penaltiesApplied.push({
+        competencia: key,
+        from: before,
+        to: processed[key]?.nota ?? before,
+        type: "reduction",
+        amount: before - (processed[key]?.nota ?? before),
         reason,
       });
     }
@@ -561,9 +565,9 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasDecorativeRepertoire) {
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_2",
-      120,
+      40,
       "O repertório foi apenas citado ou mencionado de forma decorativa, sem explicação suficiente de sua relação com o tema e com a tese.",
       "Explique com mais clareza como a referência escolhida ajuda a interpretar o problema debatido e sustenta o argumento desenvolvido.",
     );
@@ -579,24 +583,24 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasSuperficialDevelopment) {
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_3",
-      120,
+      40,
       "Os argumentos permaneceram superficiais, com generalizações frequentes e pouco desenvolvimento de causas, consequências ou mecanismos do problema.",
       "Aprofunde cada argumento com encadeamento causal, consequências concretas e explicações mais específicas, evitando afirmações amplas demais.",
     );
   }
 
   if (signals.hasSevereDevelopmentIssue) {
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_3",
-      120,
+      40,
       "Foi identificada repetição de ideias e de fórmulas argumentativas, o que reduziu a progressão analítica do texto.",
       "Varie os argumentos e avance na análise a cada parágrafo, evitando repetir o mesmo raciocínio com palavras diferentes.",
     );
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_4",
-      160,
+      40,
       "A repetição de construções e encadeamentos comprometeu a fluidez argumentativa.",
       "Diversifique os conectivos e a articulação entre períodos para tornar a progressão textual mais refinada.",
     );
@@ -678,51 +682,33 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (signals.hasLowDensity && !hasHighQualityFoundation) {
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_2",
-      signals.hasDecorativeRepertoire ? 120 : 160,
+      40,
       "Foi identificada baixa densidade argumentativa, com repertório sociocultural frágil, decorativo ou insuficientemente desenvolvido para sustentar a discussão.",
       "Use repertório sociocultural pertinente e desenvolva melhor a relação dele com o tema, evitando apenas citar autores, leis ou conceitos.",
     );
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_3",
-      signals.hasSuperficialDevelopment ? 120 : 160,
+      40,
       "A argumentação permaneceu genérica, com afirmações pouco desenvolvidas e explicação insuficiente de causas, consequências e exemplos concretos.",
       "Desenvolva melhor cada argumento, explicando mecanismos, impactos e exemplos concretos em vez de apenas afirmar o problema.",
     );
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_4",
-      120,
+      40,
       "A organização do texto não compensou a baixa densidade analítica, o que impediu uma progressão argumentativa mais consistente.",
       "Use a coesão para aprofundar o raciocínio, articulando melhor explicações, exemplos e desdobramentos dos argumentos.",
     );
-    applyTrackedPenalty(
+    applyTrackedReduction(
       "competencia_5",
-      120,
+      40,
       "A proposta de intervenção não superou o nível genérico exigido para uma redação com baixa densidade argumentativa.",
       "Detalhe melhor agente, ação, meio e finalidade, conectando a proposta aos problemas discutidos no desenvolvimento.",
     );
-    recalculateFinalScore(processed);
-    capFinalScore(processed, signals.hasDecorativeRepertoire ? 640 : 680, [
-      "competencia_4",
-      "competencia_5",
-      "competencia_1",
-      "competencia_2",
-      "competencia_3",
-    ]);
   }
 
   recalculateFinalScore(processed);
-
-  if (signals.hasBasicEssayStructure && (processed.nota_final ?? 0) < 400) {
-    ensureMinimumScore(processed, "competencia_1", 80);
-    ensureMinimumScore(processed, "competencia_2", 80);
-    ensureMinimumScore(processed, "competencia_3", 80);
-    ensureMinimumScore(processed, "competencia_4", 80);
-    ensureMinimumScore(processed, "competencia_5", 80);
-
-    recalculateFinalScore(processed);
-  }
 
   if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
     applyTrackedPenalty(
@@ -767,20 +753,6 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_3?.nota ?? 0) +
       (processed.competencia_4?.nota ?? 0) +
       (processed.competencia_5?.nota ?? 0);
-  }
-
-  if (
-    signals.hasLowDensity &&
-    !hasHighQualityFoundation &&
-    (processed.nota_final ?? 0) > (signals.hasDecorativeRepertoire ? 640 : 680)
-  ) {
-    capFinalScore(processed, signals.hasDecorativeRepertoire ? 640 : 680, [
-      "competencia_4",
-      "competencia_5",
-      "competencia_1",
-      "competencia_2",
-      "competencia_3",
-    ]);
   }
 
   if (!processed.resumo_geral) {
