@@ -169,18 +169,6 @@ function getPenaltyCount(result: CorrectionResult) {
   ).length;
 }
 
-function getLowScoreCount(result: CorrectionResult) {
-  const components = [
-    result.competencia_1,
-    result.competencia_2,
-    result.competencia_3,
-    result.competencia_4,
-    result.competencia_5,
-  ];
-
-  return components.filter((component) => (component?.nota ?? 0) <= 120).length;
-}
-
 function recalculateFinalScore(result: CorrectionResult) {
   result.nota_final =
     (result.competencia_1?.nota ?? 0) +
@@ -234,6 +222,9 @@ function countOccurrences(text: string, patterns: RegExp[]) {
 
 function analyzeEssaySignals(text: string) {
   const normalized = text.toLowerCase();
+  const normalizedWithoutAccents = normalized
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
   const paragraphCount = text
     .split(/\n\s*\n|\n/)
     .map((paragraph) => paragraph.trim())
@@ -336,6 +327,23 @@ function analyzeEssaySignals(text: string) {
     /\blei\b/g,
   ]);
 
+  const explanationMarkerCount = countOccurrences(normalizedWithoutAccents, [
+    /\bporque\b/g,
+    /\bpois\b/g,
+    /\buma vez que\b/g,
+    /\bja que\b/g,
+    /\bisso ocorre\b/g,
+    /\bo que\b/g,
+    /\bde modo que\b/g,
+    /\bpor isso\b/g,
+    /\bdesse modo\b/g,
+    /\bassim\b/g,
+    /\bportanto\b/g,
+    /\bcomo consequencia\b/g,
+    /\bcomo resultado\b/g,
+    /\bem razao de\b/g,
+  ]);
+
   const interventionAgentCount = countOccurrences(normalized, [
     /\bgoverno\b/g,
     /\bestado\b/g,
@@ -422,13 +430,22 @@ function analyzeEssaySignals(text: string) {
     hasRelevantRepertoire:
       genericRepertoireCount === 0 &&
       (strongRepertoireCount >= 1 || concreteDataCount >= 1),
+    hasDecorativeRepertoire:
+      repertoireReferenceCount >= 1 &&
+      strongRepertoireCount === 0 &&
+      concreteDataCount === 0 &&
+      explanationMarkerCount <= 2,
     hasConsistentArgumentation:
       genericArgumentCount <= 1 && connectorCount >= 3 && repetitionCount <= 1,
+    hasSuperficialDevelopment:
+      genericArgumentCount >= 2 &&
+      explanationMarkerCount <= 2 &&
+      concreteDataCount === 0,
     hasLowDensity:
-      genericArgumentCount >= 3 &&
+      (strongRepertoireCount === 0 || repertoireReferenceCount >= 1) &&
+      genericArgumentCount >= 2 &&
       concreteDataCount === 0 &&
-      strongRepertoireCount === 0 &&
-      repertoireReferenceCount === 0,
+      (repertoireReferenceCount === 0 || explanationMarkerCount <= 2),
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
@@ -487,6 +504,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
+  if (signals.hasDecorativeRepertoire) {
+    applyPenalty(
+      processed,
+      "competencia_2",
+      120,
+      "O repertório foi apenas citado ou mencionado de forma decorativa, sem explicação suficiente de sua relação com o tema e com a tese.",
+      "Explique com mais clareza como a referência escolhida ajuda a interpretar o problema debatido e sustenta o argumento desenvolvido.",
+    );
+  }
+
   if (signals.hasGenericArgumentation) {
     applyPenalty(
       processed,
@@ -494,6 +521,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       160,
       "A argumentação apresentou trechos genéricos e superficiais, com desenvolvimento crítico insuficiente.",
       "Aprofunde as causas e consequências com análise mais específica, evitando fórmulas vagas e relações pouco explicadas.",
+    );
+  }
+
+  if (signals.hasSuperficialDevelopment) {
+    applyPenalty(
+      processed,
+      "competencia_3",
+      120,
+      "Os argumentos permaneceram superficiais, com generalizações frequentes e pouco desenvolvimento de causas, consequências ou mecanismos do problema.",
+      "Aprofunde cada argumento com encadeamento causal, consequências concretas e explicações mais específicas, evitando afirmações amplas demais.",
     );
   }
 
@@ -528,10 +565,6 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (!signals.hasLexicalRepetition && !signals.hasSimpleSyntax) {
-    ensureMinimumScore(processed, "competencia_1", 160);
-  }
-
   if (
     getPenaltyCount(processed) < 2 &&
     signals.hasGenericArgumentation &&
@@ -559,22 +592,6 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (!signals.hasSevereDevelopmentIssue) {
-    ensureMinimumScore(processed, "competencia_3", 160);
-  }
-
-  if (signals.hasBasicCohesion && !signals.hasOnlyFunctionalCohesion) {
-    ensureMinimumScore(processed, "competencia_4", 160);
-  }
-
-  if (signals.hasPertinentRepertoire) {
-    ensureMinimumScore(processed, "competencia_2", 160);
-  }
-
-  if (signals.hasBasicIntervention) {
-    ensureMinimumScore(processed, "competencia_5", 160);
-  }
-
   if (signals.hasGenericIntervention) {
     applyPenalty(
       processed,
@@ -599,16 +616,6 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (getLowScoreCount(processed) > 1 && !signals.hasSevereDevelopmentIssue) {
-    if (signals.hasPertinentRepertoire) {
-      ensureMinimumScore(processed, "competencia_2", 160);
-    }
-
-    if (signals.hasBasicIntervention) {
-      ensureMinimumScore(processed, "competencia_5", 160);
-    }
-  }
-
   const componentKeys = [
     "competencia_1",
     "competencia_2",
@@ -628,14 +635,14 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     applyPenalty(
       processed,
       "competencia_2",
-      120,
-      "Foi identificada baixa densidade argumentativa, com repertório sociocultural ausente, frágil ou pouco relevante para sustentar a discussão.",
-      "Inclua repertório sociocultural realmente pertinente e explique de forma clara como ele sustenta a tese defendida.",
+      signals.hasDecorativeRepertoire ? 120 : 160,
+      "Foi identificada baixa densidade argumentativa, com repertório sociocultural frágil, decorativo ou insuficientemente desenvolvido para sustentar a discussão.",
+      "Use repertório sociocultural pertinente e desenvolva melhor a relação dele com o tema, evitando apenas citar autores, leis ou conceitos.",
     );
     applyPenalty(
       processed,
       "competencia_3",
-      120,
+      signals.hasSuperficialDevelopment ? 120 : 160,
       "A argumentação permaneceu genérica, com afirmações pouco desenvolvidas e explicação insuficiente de causas, consequências e exemplos concretos.",
       "Desenvolva melhor cada argumento, explicando mecanismos, impactos e exemplos concretos em vez de apenas afirmar o problema.",
     );
@@ -654,7 +661,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       "Detalhe melhor agente, ação, meio e finalidade, conectando a proposta aos problemas discutidos no desenvolvimento.",
     );
     recalculateFinalScore(processed);
-    capFinalScore(processed, 640, [
+    capFinalScore(processed, signals.hasDecorativeRepertoire ? 640 : 680, [
       "competencia_4",
       "competencia_5",
       "competencia_1",
@@ -665,140 +672,17 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   recalculateFinalScore(processed);
 
-  if (signals.hasBasicEssayStructure && !signals.hasLowDensity && (processed.nota_final ?? 0) < 480) {
+  if (signals.hasBasicEssayStructure && (processed.nota_final ?? 0) < 400) {
     ensureMinimumScore(processed, "competencia_1", 80);
-    ensureMinimumScore(processed, "competencia_2", 120);
-    ensureMinimumScore(processed, "competencia_3", 120);
-    ensureMinimumScore(processed, "competencia_4", 120);
-    ensureMinimumScore(processed, "competencia_5", 120);
+    ensureMinimumScore(processed, "competencia_2", 80);
+    ensureMinimumScore(processed, "competencia_3", 80);
+    ensureMinimumScore(processed, "competencia_4", 80);
+    ensureMinimumScore(processed, "competencia_5", 80);
 
     recalculateFinalScore(processed);
   }
 
-  const shouldApplyMedianEssayFloor =
-    signals.hasBasicEssayStructure &&
-    !signals.hasLowDensity &&
-    signals.hasPertinentRepertoire &&
-    signals.hasBasicIntervention &&
-    !signals.hasSevereDevelopmentIssue;
-
-  if (shouldApplyMedianEssayFloor && (processed.nota_final ?? 0) < 760) {
-    ensureMinimumScore(processed, "competencia_2", 160);
-    ensureMinimumScore(processed, "competencia_5", 160);
-    ensureMinimumScore(processed, "competencia_3", 160);
-    ensureMinimumScore(processed, "competencia_4", 160);
-    ensureMinimumScore(processed, "competencia_1", 120);
-    recalculateFinalScore(processed);
-  }
-
-  if (
-    signals.hasBasicEssayStructure &&
-    !signals.hasLowDensity &&
-    !signals.hasStrongRepertoire &&
-    (processed.nota_final ?? 0) < 720
-  ) {
-    ensureMinimumScore(processed, "competencia_1", 120);
-    ensureMinimumScore(processed, "competencia_2", 120);
-    ensureMinimumScore(processed, "competencia_3", 160);
-    ensureMinimumScore(processed, "competencia_4", 160);
-    ensureMinimumScore(processed, "competencia_5", 160);
-
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-  }
-
-  const hasValidIntervention = (processed.competencia_5?.nota ?? 0) >= 160;
-  const shouldApplyStructuredEssayFloor =
-    signals.hasCompleteEssayStructure &&
-    !signals.hasLowDensity &&
-    signals.hasBasicCohesion &&
-    signals.hasConsistentArgumentation &&
-    signals.hasRelevantRepertoire &&
-    hasValidIntervention &&
-    !signals.hasSevereDevelopmentIssue;
-
-  if (shouldApplyStructuredEssayFloor && (processed.nota_final ?? 0) < 860) {
-    ensureMinimumScore(processed, "competencia_1", 160);
-    ensureMinimumScore(processed, "competencia_3", 160);
-    ensureMinimumScore(processed, "competencia_4", 160);
-    ensureMinimumScore(processed, "competencia_5", 160);
-    ensureMinimumScore(processed, "competencia_2", 160);
-
-    const structuredEssayTotal =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-
-    const excellentCompetencies = [
-      processed.competencia_1?.nota ?? 0,
-      processed.competencia_3?.nota ?? 0,
-      processed.competencia_4?.nota ?? 0,
-      processed.competencia_5?.nota ?? 0,
-    ].filter((score) => score >= 200).length;
-
-    if (structuredEssayTotal < 860 || excellentCompetencies < 3) {
-      if (!signals.hasGenericArgumentation) {
-        ensureMinimumScore(processed, "competencia_3", 200);
-      }
-
-      if (!signals.hasLexicalRepetition && !signals.hasSimpleSyntax) {
-        ensureMinimumScore(processed, "competencia_1", 200);
-      }
-
-      if (signals.hasBasicCohesion && !signals.hasOnlyFunctionalCohesion) {
-        ensureMinimumScore(processed, "competencia_4", 200);
-      }
-
-      if ((processed.competencia_5?.nota ?? 0) >= 160) {
-        ensureMinimumScore(processed, "competencia_5", 200);
-      }
-    }
-
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-  }
-
-  const canReachMaximumScore =
-    signals.hasCompleteEssayStructure &&
-    !signals.hasLowDensity &&
-    signals.hasBasicCohesion &&
-    signals.hasExceptionalLanguage &&
-    signals.hasExceptionalArgumentation &&
-    signals.hasExceptionalCohesion &&
-    signals.hasStrongRepertoire &&
-    !signals.hasGenericRepertoire &&
-    signals.hasCompleteIntervention &&
-    signals.hasDetailedIntervention &&
-    !signals.hasSevereDevelopmentIssue &&
-    !signals.hasLexicalRepetition &&
-    !signals.hasSimpleSyntax;
-
-  if (canReachMaximumScore) {
-    ensureMinimumScore(processed, "competencia_1", 200);
-    ensureMinimumScore(processed, "competencia_2", 200);
-    ensureMinimumScore(processed, "competencia_3", 200);
-    ensureMinimumScore(processed, "competencia_4", 200);
-    ensureMinimumScore(processed, "competencia_5", 200);
-
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-  }
-
-  if (processed.nota_final === 1000 && !signals.isExceptionalEssay && !canReachMaximumScore) {
+  if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
     applyPenalty(
       processed,
       "competencia_2",
@@ -830,7 +714,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay && !canReachMaximumScore) {
+  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay) {
     applyPenalty(
       processed,
       signals.hasGenericArgumentation ? "competencia_3" : "competencia_5",
@@ -846,8 +730,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if (signals.hasLowDensity && (processed.nota_final ?? 0) > 640) {
-    capFinalScore(processed, 640, [
+  if (
+    signals.hasLowDensity &&
+    (processed.nota_final ?? 0) > (signals.hasDecorativeRepertoire ? 640 : 680)
+  ) {
+    capFinalScore(processed, signals.hasDecorativeRepertoire ? 640 : 680, [
       "competencia_4",
       "competencia_5",
       "competencia_1",
@@ -1423,147 +1310,69 @@ export async function POST(request: Request) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
     }
 
-    const promptMestre = `Você é um corretor experiente de redações do ENEM. Sua tarefa é avaliar a redação de forma realista, justa e rigorosa, aproximando-se ao máximo de uma correção humana.
+    const promptMestre = `Você é um corretor experiente de redações do ENEM. Avalie a redação com rigor, justiça e realismo, aproximando-se ao máximo de uma correção humana.
 
-ORIENTAÇÕES GERAIS:
+REGRAS GERAIS:
 - use apenas as notas 0, 40, 80, 120, 160 e 200;
 - não seja motivacional na atribuição da nota;
 - não premie aparência de texto bom;
-- texto organizado não significa texto bom;
-- conectivos não garantem nota alta;
-- linguagem formal não garante excelência;
+- texto organizado, conectivos e linguagem formal não garantem nota alta;
 - não confunda estrutura pronta com qualidade argumentativa;
-- não dê nota alta apenas porque há conectivos, citações ou linguagem formal;
-- não premie repertório coringa, decorativo ou forçado;
-- não penalize em cascata outras competências apenas por erros gramaticais, exceto quando prejudicarem a compreensão;
-- não confunda conectivos com boa argumentação;
-- se o texto for denso, filosófico ou abstrato, não o penalize por complexidade se houver coerência e profundidade real.
+- não premie repertório coringa, decorativo ou apenas citado;
+- não penalize em cascata outras competências apenas por erros gramaticais, exceto quando eles prejudicarem a compreensão;
 - se houver dúvida entre duas faixas, escolha a menor.
 
-PROCESSO OBRIGATÓRIO DE CORREÇÃO:
-ETAPA 1 — Classificação geral da redação:
-- classifique a redação em apenas um nível: Muito fraca, Fraca, Mediana, Boa, Muito boa ou Excelente;
-- baseie-se em profundidade da argumentação, qualidade do repertório, nível de detalhamento, originalidade e criticidade;
-- textos com estrutura bonita mas ideias superficiais não podem ficar acima de Mediana;
-- textos com análise profunda podem ser Boa, Muito boa ou Excelente;
-- registre essa percepção de forma implícita nas justificativas e no resumo geral.
+PROCESSO DE CORREÇÃO:
+1. Classifique internamente a redação como fraca, mediana, boa, muito boa ou excelente.
+2. Verifique se o texto:
+- explica causas e consequências;
+- desenvolve argumentos em vez de só afirmar;
+- usa repertório sociocultural pertinente e produtivo;
+- apresenta proposta de intervenção detalhada e relacionada ao problema.
+3. Se a redação for superficial, genérica ou pouco desenvolvida, reduza a nota.
 
-ETAPA 2 — Análise crítica obrigatória:
-- avalie internamente se o texto realmente explica causas e consequências;
-- avalie se o repertório é explicado ou apenas citado;
-- avalie se a argumentação é genérica ou aprofundada;
-- avalie se a proposta de intervenção é detalhada ou genérica;
-- se a maioria desses pontos for superficial, limite a redação como no máximo Mediana.
+FAIXAS DE REFERÊNCIA:
+- fraca: 500–640;
+- mediana: 680–800;
+- boa: 820–900;
+- muito boa: 920–960;
+- excelente: 960–1000.
 
-ETAPA CRÍTICA — DETECÇÃO DE BAIXA DENSIDADE:
-- verifique se há repertório sociocultural relevante;
-- verifique se o texto realmente explica causas e consequências;
-- verifique se há exemplos concretos ou apenas generalizações;
-- verifique se a argumentação desenvolve ideias ou apenas afirma;
-- se a maioria das respostas for não, classifique automaticamente a redação como Fraca ou Mediana baixa;
-- nesse caso, limite a nota final em no máximo 640;
-- estrutura correta não é suficiente para nota média;
-- textos genéricos não podem ultrapassar 640;
-- ausência de repertório relevante limita a Competência 2 a no máximo 120;
-- argumentação superficial limita a Competência 3 a no máximo 120.
+CALIBRAÇÃO:
+- texto genérico tende a ficar em 500–680, salvo se houver estrutura e algum desenvolvimento relevante;
+- redações superficiais não devem receber nota alta só porque parecem bem escritas;
+- repertório só vale quando é pertinente, explicado e integrado ao argumento;
+- argumentação forte exige desenvolvimento real de causas, consequências, mecanismos e impactos;
+- proposta de intervenção forte exige agente, ação, meio/modo, finalidade e detalhamento;
+- nota 1000 deve ser rara, mas possível.
 
-ETAPA 3 — Limite de nota pela classificação:
-- Muito fraca: 0–400;
-- Fraca: 400–640;
-- Mediana: 640–800;
-- Boa: 800–880;
-- Muito boa: 880–920;
-- Excelente: 920–1000;
-- nunca ultrapasse o limite da classificação geral.
+CRITÉRIOS POR COMPETÊNCIA:
+- Competência 1: avalie gramática, ortografia, concordância, regência, pontuação, clareza sintática e domínio da norma padrão.
+- Competência 2: avalie compreensão do tema e uso de repertório sociocultural pertinente, produtivo e conectado à argumentação.
+- Competência 3: avalie seleção, organização e desenvolvimento dos argumentos. Texto genérico, superficial ou repetitivo deve ser penalizado.
+- Competência 4: avalie coesão e progressão textual. Não atribua nota máxima apenas por presença de conectivos.
+- Competência 5: avalie a proposta de intervenção. Proposta vaga ou genérica não deve receber nota alta.
 
-ETAPA 4 — Correção por competência:
-- C2: repertório decorativo ou apenas citado tende a no máximo 160;
-- C3: argumentação superficial tende a no máximo 160;
-- C5: proposta genérica tende a no máximo 160.
-
-ETAPA 5 — Verificação final:
-- se a redação for superficial, ou tiver repertório mal usado, ou tiver argumentação genérica, não permita nota acima de 800;
-- se houver inconsistência entre nota e qualidade real do texto, ajuste para baixo.
-
-TEMA DA REDAÇÃO: "${normalizedTheme}"
-
-CRITÉRIOS ESSENCIAIS DE JULGAMENTO:
-- Competência 1: avalie gramática, concordância, regência, pontuação, acentuação, ortografia, clareza sintática e formalidade;
-- Competência 2: repertório só vale se for pertinente, produtivo e integrado à argumentação; citação sem conexão deve ser penalizada; repertório forçado ou decorativo tende a ficar no máximo em 120–160;
-- Competência 3: texto bonito sem explicar causas, consequências ou mecanismos deve ser penalizado; argumentos genéricos e explicações vagas tendem a ficar no máximo em 160; aprofundamento real exige causa + consequência + impacto;
-- Competência 4: não atribua 200 apenas por presença de conectivos; a coesão deve articular ideias de forma lógica e não mecânica;
-- Competência 5: proposta vaga não deve receber nota alta; campanhas ou conscientização genéricas tendem a ficar no máximo em 160; proposta detalhada com 5 elementos pode alcançar 180–200.
-
-META DE DISTRIBUIÇÃO:
-- A maioria das boas redações deve ficar entre 880 e 940.
-- Notas acima de 960 devem ser raras.
-- Nota 1000 deve ser extremamente rara e reservada a textos praticamente impecáveis.
-- Evite inflar notas. Na dúvida entre 200 e 160, prefira 160.
-
-REGRA CENTRAL DE RIGOR:
-- Nota 200 em qualquer competência exige desempenho excepcional, raro e claramente acima da média.
-- Não use 200 com facilidade.
-- Se houver qualquer traço relevante de genericidade, superficialidade, repetição, repertório pouco aprofundado ou linguagem apenas correta, reduza para 160.
-
-REGRA CRÍTICA PARA 920+:
-- antes de atribuir nota final acima de 900, verifique se o repertório é realmente produtivo, se a argumentação aprofunda causas e consequências, se a proposta de intervenção é detalhada e se a linguagem apresenta poucos desvios relevantes;
-- se algum desses pontos falhar, evite nota acima de 900.
-
-REGRA CRÍTICA DE SUPERFICIALIDADE:
-- redações superficiais não podem ultrapassar 800, mesmo que bem escritas.
-
-CRITÉRIOS PARA 200:
-1. Competência 1:
-- dê 200 quando houver domínio completo da norma padrão, boa variação lexical e estruturas sintáticas complexas;
-- não exija sofisticação extrema para a nota máxima;
-- só reduza abaixo de 200 se houver limitação perceptível de variação, clareza ou domínio formal.
-
-2. Competência 2:
-- dê 200 quando o repertório for pertinente, bem explicado e articulado com a tese;
-- não exija estatísticas, leis ou dados numéricos para a nota máxima;
-- repertório genérico, decorativo ou pouco aprofundado deve ficar em 160;
-- só use faixa inferior se houver fragilidade clara de pertinência ou explicação.
-
-3. Competência 3:
-- só dê 200 se a argumentação for crítica, densa e não genérica;
-- se o texto usar ideias vagas como “problema social”, “falta de respeito”, “cultura de desrespeito” ou “é preciso conscientizar”, sem aprofundamento real, reduza a nota;
-- se os argumentos forem superficiais, repetitivos ou pouco desenvolvidos, use no máximo 160.
-
-4. Competência 4:
-- só dê 200 se a progressão textual for muito fluida, com excelente articulação entre períodos e parágrafos;
-- mesmo com boa coesão, não dê 200 automaticamente;
-- repetição de conectivos, encadeamento previsível ou progressão pouco refinada impede 200;
-- se a coesão for boa, mas sem sofisticação real, use no máximo 160.
-
-5. Competência 5:
-- só dê 200 se a proposta de intervenção for completa, detalhada, bem articulada e plausível;
-- a intervenção precisa apresentar agente, ação, meio/modo, efeito e detalhamento consistente.
-
-PENALIZAÇÕES OBRIGATÓRIAS:
-- ausência de repertório pertinente ou explicação frágil: limite C2 em 160;
-- argumentação genérica ou superficial: reduza C3;
-- repetição de ideias: reduza C3 e/ou C4;
-- linguagem apenas correta, mas sem sofisticação: limite C1 em 160;
-- boa coesão sem sofisticação real: limite C4 em 160;
-- justifique toda penalização de forma explícita na justificativa e na melhoria.
+ORIENTAÇÕES DE RIGOR:
+- repertório decorativo ou pouco explicado tende a ficar no máximo em 160 na Competência 2;
+- argumentação superficial tende a ficar no máximo em 160 na Competência 3;
+- coesão apenas funcional, repetitiva ou mecânica tende a ficar no máximo em 160 na Competência 4;
+- proposta genérica tende a ficar no máximo em 160 na Competência 5;
+- nota 200 em qualquer competência exige desempenho claramente acima da média;
+- antes de atribuir nota final acima de 920, confirme repertório produtivo, argumentação consistente, boa coesão, intervenção detalhada e domínio linguístico sólido.
 
 SUGESTÕES DE REESCRITA:
 - selecione até 3 trechos reais da redação que precisam de melhoria;
 - priorize argumento genérico, linguagem simples ou falta de precisão;
-- para cada trecho, mantenha o sentido original, mas reescreva com maior formalidade, especificidade e sofisticação;
-- evite exageros e não invente ideias totalmente novas;
-- cada sugestão precisa conter:
-  - trecho_original
-  - sugestao_reescrita
-  - motivo
+- mantenha o sentido original, mas reescreva com maior formalidade, especificidade e sofisticação;
+- não invente ideias totalmente novas.
 
-ESCALA OFICIAL:
-- 0, 40, 80, 120, 160, 200
-- Use apenas esses valores.
+TEMA DA REDAÇÃO: "${normalizedTheme}"
 
 SAÍDA:
-- Retorne APENAS JSON puro.
-- A nota_final deve ser a soma exata das 5 competências.
+- retorne apenas JSON puro;
+- a nota_final deve ser a soma exata das 5 competências;
+- use exatamente esta estrutura:
 
 {
   "competencia_1": { "nota": 0, "justificativa": "", "melhoria": "" },
@@ -1581,19 +1390,6 @@ SAÍDA:
     }
   ]
 }
-
-RECALIBRAÇÃO FINAL OBRIGATÓRIA:
-- não infle redações com estrutura pronta;
-- não subestime textos densos se houver coerência e profundidade;
-- não premie repertório coringa, decorativo ou apenas citado;
-- não penalize em cascata outras competências por erros gramaticais;
-- não confunda conectivos com boa argumentação;
-- redação fraca tende a ficar em 500-640;
-- redação superficial ou mediana tende a ficar em 680-800;
-- redação boa tende a ficar em 820-900;
-- redação muito boa tende a ficar em 920-960;
-- nota 1000 exige excelência plena;
-- garanta que a nota_final seja a soma exata das 5 competências.
 
 REDAÇÃO PARA AVALIAR: "${normalizedText}"`;
 
