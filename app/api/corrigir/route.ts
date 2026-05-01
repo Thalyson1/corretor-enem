@@ -736,7 +736,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if ((processed.nota_final ?? 0) > 960 && !signals.isExceptionalEssay) {
+  if ((processed.nota_final ?? 0) > 960 && !canReachMaximumScore) {
     applyPenalty(
       processed,
       "competencia_4",
