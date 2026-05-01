@@ -126,35 +126,49 @@ function applyPenalty(
   const comp = result[key];
 
   if (!comp) {
-    return;
+    return false;
   }
 
   if (comp.nota > cap) {
     comp.nota = normalizeScore(cap);
     comp.justificativa = appendPenaltyText(comp.justificativa, reason);
     comp.melhoria = appendPenaltyText(comp.melhoria, improvement);
+    return true;
   }
+
+  return false;
 }
 
-function ensureMinimumScore(
+function reduceScore(
   result: CorrectionResult,
   key: keyof Pick<
     CorrectionResult,
     "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
   >,
-  minimum: number,
+  amount: number,
+  reason: string,
+  improvement: string,
 ) {
   const comp = result[key];
 
   if (!comp) {
-    return;
+    return false;
   }
 
-  if (comp.nota < minimum) {
-    comp.nota = normalizeScore(minimum);
+  const nextScore = Math.max(0, comp.nota - amount);
+
+  if (nextScore < comp.nota) {
+    comp.nota = normalizeScore(nextScore);
+    comp.justificativa = appendPenaltyText(comp.justificativa, reason);
+    comp.melhoria = appendPenaltyText(comp.melhoria, improvement);
+    return true;
   }
+
+  return false;
 }
 
+// Legacy helper kept temporarily to avoid wider refactors in this file.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getPenaltyCount(result: CorrectionResult) {
   const components = [
     result.competencia_1,
@@ -169,7 +183,16 @@ function getPenaltyCount(result: CorrectionResult) {
   ).length;
 }
 
-function getLowScoreCount(result: CorrectionResult) {
+function recalculateFinalScore(result: CorrectionResult) {
+  result.nota_final =
+    (result.competencia_1?.nota ?? 0) +
+    (result.competencia_2?.nota ?? 0) +
+    (result.competencia_3?.nota ?? 0) +
+    (result.competencia_4?.nota ?? 0) +
+    (result.competencia_5?.nota ?? 0);
+}
+
+function getPenaltyCountSafe(result: CorrectionResult) {
   const components = [
     result.competencia_1,
     result.competencia_2,
@@ -178,16 +201,40 @@ function getLowScoreCount(result: CorrectionResult) {
     result.competencia_5,
   ];
 
-  return components.filter((component) => (component?.nota ?? 0) <= 120).length;
+  return components.filter((component) => {
+    const justification = component?.justificativa ?? "";
+    return justification.includes("Penaliza");
+  }).length;
 }
 
-function recalculateFinalScore(result: CorrectionResult) {
-  result.nota_final =
-    (result.competencia_1?.nota ?? 0) +
-    (result.competencia_2?.nota ?? 0) +
-    (result.competencia_3?.nota ?? 0) +
-    (result.competencia_4?.nota ?? 0) +
-    (result.competencia_5?.nota ?? 0);
+function raiseFinalScoreToMinimum(
+  result: CorrectionResult,
+  minimum: number,
+  priority: Array<
+    keyof Pick<
+      CorrectionResult,
+      | "competencia_1"
+      | "competencia_2"
+      | "competencia_3"
+      | "competencia_4"
+      | "competencia_5"
+    >
+  >,
+) {
+  recalculateFinalScore(result);
+
+  for (const key of priority) {
+    const comp = result[key];
+
+    while (comp && (result.nota_final ?? 0) < minimum && comp.nota < 200) {
+      comp.nota = normalizeScore(comp.nota + 40);
+      recalculateFinalScore(result);
+    }
+
+    if ((result.nota_final ?? 0) >= minimum) {
+      return;
+    }
+  }
 }
 
 function tokenizeWords(text: string) {
@@ -204,6 +251,9 @@ function countOccurrences(text: string, patterns: RegExp[]) {
 
 function analyzeEssaySignals(text: string) {
   const normalized = text.toLowerCase();
+  const normalizedWithoutAccents = normalized
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
   const paragraphCount = text
     .split(/\n\s*\n|\n/)
     .map((paragraph) => paragraph.trim())
@@ -276,6 +326,9 @@ function analyzeEssaySignals(text: string) {
   ]);
 
   const strongRepertoireCount = countOccurrences(normalized, [
+    /gabriel o pensador/g,
+    /john locke/g,
+    /hans jonas/g,
     /constituicao federal/g,
     /codigo penal/g,
     /estatuto da crianca e do adolescente/g,
@@ -304,6 +357,23 @@ function analyzeEssaySignals(text: string) {
     /\bautor\b/g,
     /\bconstituicao\b/g,
     /\blei\b/g,
+  ]);
+
+  const explanationMarkerCount = countOccurrences(normalizedWithoutAccents, [
+    /\bporque\b/g,
+    /\bpois\b/g,
+    /\buma vez que\b/g,
+    /\bja que\b/g,
+    /\bisso ocorre\b/g,
+    /\bo que\b/g,
+    /\bde modo que\b/g,
+    /\bpor isso\b/g,
+    /\bdesse modo\b/g,
+    /\bassim\b/g,
+    /\bportanto\b/g,
+    /\bcomo consequencia\b/g,
+    /\bcomo resultado\b/g,
+    /\bem razao de\b/g,
   ]);
 
   const interventionAgentCount = countOccurrences(normalized, [
@@ -365,8 +435,14 @@ function analyzeEssaySignals(text: string) {
   }, 0);
 
   return {
+    hasConcreteSupport: concreteDataCount >= 1,
     hasConcreteData: concreteDataCount >= 2,
-    hasStrongRepertoire: strongRepertoireCount >= 1 || concreteDataCount >= 2,
+    hasStrongRepertoire:
+      strongRepertoireCount >= 1 ||
+      concreteDataCount >= 2 ||
+      (repertoireReferenceCount >= 2 &&
+        explanationMarkerCount >= 3 &&
+        genericRepertoireCount === 0),
     hasPertinentRepertoire:
       strongRepertoireCount >= 1 ||
       concreteDataCount >= 1 ||
@@ -392,8 +468,27 @@ function analyzeEssaySignals(text: string) {
     hasRelevantRepertoire:
       genericRepertoireCount === 0 &&
       (strongRepertoireCount >= 1 || concreteDataCount >= 1),
+    hasDecorativeRepertoire:
+      repertoireReferenceCount >= 1 &&
+      strongRepertoireCount === 0 &&
+      concreteDataCount === 0 &&
+      explanationMarkerCount <= 2,
     hasConsistentArgumentation:
       genericArgumentCount <= 1 && connectorCount >= 3 && repetitionCount <= 1,
+    hasDevelopedArgumentation:
+      explanationMarkerCount >= 3 &&
+      genericArgumentCount <= 1 &&
+      repetitionCount <= 1,
+    hasGoodCohesion: connectorCount >= 3 && !repetitionCount,
+    hasSuperficialDevelopment:
+      genericArgumentCount >= 2 &&
+      explanationMarkerCount <= 2 &&
+      concreteDataCount === 0,
+    hasLowDensity:
+      strongRepertoireCount === 0 &&
+      concreteDataCount === 0 &&
+      genericArgumentCount >= 2 &&
+      explanationMarkerCount <= 2,
     hasBasicEssayStructure: paragraphCount >= 3,
     hasCompleteEssayStructure: paragraphCount >= 4 && connectorCount >= 2,
     hasBasicCohesion: connectorCount >= 2,
@@ -425,22 +520,131 @@ function analyzeEssaySignals(text: string) {
 function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   const processed: CorrectionResult = JSON.parse(JSON.stringify(result)) as CorrectionResult;
   const signals = analyzeEssaySignals(essayText);
+  const beforeScores = {
+    competencia_1: result.competencia_1?.nota ?? 0,
+    competencia_2: result.competencia_2?.nota ?? 0,
+    competencia_3: result.competencia_3?.nota ?? 0,
+    competencia_4: result.competencia_4?.nota ?? 0,
+    competencia_5: result.competencia_5?.nota ?? 0,
+    nota_final: result.nota_final ?? 0,
+  };
+  const penaltiesApplied: Array<{
+    competencia: string;
+    from: number;
+    to: number;
+    type: "cap" | "reduction";
+    amount: number;
+    reason: string;
+  }> = [];
+  const hasHighQualityFoundation =
+    signals.hasCompleteEssayStructure &&
+    (signals.hasStrongRepertoire || signals.hasConcreteSupport) &&
+    signals.hasDevelopedArgumentation &&
+    signals.hasCompleteIntervention &&
+    signals.hasGoodCohesion;
+  const hasExcellentEssayFoundation =
+    hasHighQualityFoundation &&
+    !signals.hasSevereDevelopmentIssue &&
+    (signals.isExceptionalEssay ||
+      (signals.hasExceptionalLanguage &&
+        (signals.hasExceptionalArgumentation || signals.hasExceptionalCohesion)));
+  const isVeryWeakEssay =
+    !signals.hasBasicEssayStructure ||
+    (signals.hasLowDensity &&
+      !signals.hasBasicIntervention &&
+      signals.hasSimpleSyntax &&
+      !signals.hasConcreteSupport);
+  const canApplyAutomaticPenalty = (
+    key: keyof Pick<
+      CorrectionResult,
+      "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+    >,
+  ) => {
+    if (isVeryWeakEssay) {
+      return true;
+    }
+
+    const affectedCompetencies = new Set(penaltiesApplied.map((penalty) => penalty.competencia));
+    if (affectedCompetencies.has(key)) {
+      return true;
+    }
+
+    return affectedCompetencies.size < 2;
+  };
+  const applyTrackedPenalty = (
+    key: keyof Pick<
+      CorrectionResult,
+      "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+    >,
+    cap: number,
+    reason: string,
+    improvement: string,
+  ) => {
+    if (!canApplyAutomaticPenalty(key)) {
+      return false;
+    }
+
+    const before = processed[key]?.nota ?? 0;
+    const changed = applyPenalty(processed, key, cap, reason, improvement);
+
+    if (changed) {
+      penaltiesApplied.push({
+        competencia: key,
+        from: before,
+        to: processed[key]?.nota ?? before,
+        type: "cap",
+        amount: before - (processed[key]?.nota ?? before),
+        reason,
+      });
+    }
+
+    return changed;
+  };
+  const applyTrackedReduction = (
+    key: keyof Pick<
+      CorrectionResult,
+      "competencia_1" | "competencia_2" | "competencia_3" | "competencia_4" | "competencia_5"
+    >,
+    amount: number,
+    reason: string,
+    improvement: string,
+  ) => {
+    if (!canApplyAutomaticPenalty(key)) {
+      return false;
+    }
+
+    const before = processed[key]?.nota ?? 0;
+    const changed = reduceScore(processed, key, amount, reason, improvement);
+
+    if (changed) {
+      penaltiesApplied.push({
+        competencia: key,
+        from: before,
+        to: processed[key]?.nota ?? before,
+        type: "reduction",
+        amount: before - (processed[key]?.nota ?? before),
+        reason,
+      });
+    }
+
+    return changed;
+  };
   processed.sugestoes_reescrita = normalizeSuggestions(
     processed.sugestoes_reescrita,
     essayText,
   );
 
-  applyPenalty(
-    processed,
-    "competencia_2",
-    signals.hasStrongRepertoire && !signals.hasGenericRepertoire ? 200 : 160,
-    "O repertório apresentado não atingiu o nível de especificidade, aprofundamento e pertinência temática exigido para nota máxima.",
-    "Use dados concretos, leis, pesquisas, fatos históricos delimitados ou referências diretamente ligadas ao tema e explique a conexão com a tese.",
-  );
+  if (!signals.hasStrongRepertoire && !signals.hasConcreteSupport) {
+    applyTrackedPenalty(
+      "competencia_2",
+      160,
+      "O repertório apresentado não atingiu o nível de especificidade, aprofundamento e pertinência temática exigido para nota máxima.",
+      "Use dados concretos, leis, pesquisas, fatos históricos delimitados ou referências diretamente ligadas ao tema e explique a conexão com a tese.",
+    );
+  }
 
   if (!signals.hasConcreteData && signals.hasGenericRepertoire) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_2",
       signals.hasPertinentRepertoire
         ? 160
@@ -452,9 +656,17 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
+  if (signals.hasDecorativeRepertoire) {
+    applyTrackedReduction(
+      "competencia_2",
+      40,
+      "O repertório foi apenas citado ou mencionado de forma decorativa, sem explicação suficiente de sua relação com o tema e com a tese.",
+      "Explique com mais clareza como a referência escolhida ajuda a interpretar o problema debatido e sustenta o argumento desenvolvido.",
+    );
+  }
+
   if (signals.hasGenericArgumentation) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_3",
       160,
       "A argumentação apresentou trechos genéricos e superficiais, com desenvolvimento crítico insuficiente.",
@@ -462,30 +674,36 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (signals.hasSevereDevelopmentIssue) {
-    applyPenalty(
-      processed,
+  if (signals.hasSuperficialDevelopment) {
+    applyTrackedReduction(
       "competencia_3",
-      120,
+      40,
+      "Os argumentos permaneceram superficiais, com generalizações frequentes e pouco desenvolvimento de causas, consequências ou mecanismos do problema.",
+      "Aprofunde cada argumento com encadeamento causal, consequências concretas e explicações mais específicas, evitando afirmações amplas demais.",
+    );
+  }
+
+  if (signals.hasSevereDevelopmentIssue) {
+    applyTrackedReduction(
+      "competencia_3",
+      40,
       "Foi identificada repetição de ideias e de fórmulas argumentativas, o que reduziu a progressão analítica do texto.",
       "Varie os argumentos e avance na análise a cada parágrafo, evitando repetir o mesmo raciocínio com palavras diferentes.",
     );
-    applyPenalty(
-      processed,
+    applyTrackedReduction(
       "competencia_4",
-      160,
+      40,
       "A repetição de construções e encadeamentos comprometeu a fluidez argumentativa.",
       "Diversifique os conectivos e a articulação entre períodos para tornar a progressão textual mais refinada.",
     );
   }
 
   if (
-    getPenaltyCount(processed) < 2 &&
+    getPenaltyCountSafe(processed) < 2 &&
     !signals.hasSophisticatedLanguage &&
     (signals.hasLexicalRepetition || signals.hasSimpleSyntax)
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_1",
       signals.hasLexicalRepetition && signals.hasSimpleSyntax ? 120 : 160,
       "A linguagem não sustentou nível sofisticado e variado o suficiente para faixa máxima.",
@@ -493,17 +711,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (!signals.hasLexicalRepetition && !signals.hasSimpleSyntax) {
-    ensureMinimumScore(processed, "competencia_1", 160);
-  }
-
   if (
-    getPenaltyCount(processed) < 2 &&
+    getPenaltyCountSafe(processed) < 2 &&
     signals.hasGenericArgumentation &&
     !signals.hasConcreteData
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_3",
       160,
       "A argumentação apresentou genericidade, aprofundamento insuficiente ou sustentação concreta limitada, o que impede a faixa máxima.",
@@ -512,11 +725,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (
-    getPenaltyCount(processed) < 2 &&
+    getPenaltyCountSafe(processed) < 2 &&
     (signals.hasOnlyFunctionalCohesion || signals.hasRepetitionProblem)
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_4",
       160,
       "A coesão foi funcional, mas apresentou repetição ou pouca variação nos mecanismos de articulação, o que impede a faixa máxima.",
@@ -524,25 +736,8 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (!signals.hasSevereDevelopmentIssue) {
-    ensureMinimumScore(processed, "competencia_3", 160);
-  }
-
-  if (signals.hasBasicCohesion && !signals.hasOnlyFunctionalCohesion) {
-    ensureMinimumScore(processed, "competencia_4", 160);
-  }
-
-  if (signals.hasPertinentRepertoire) {
-    ensureMinimumScore(processed, "competencia_2", 160);
-  }
-
-  if (signals.hasBasicIntervention) {
-    ensureMinimumScore(processed, "competencia_5", 160);
-  }
-
   if (signals.hasGenericIntervention) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_5",
       160,
       "A proposta de intervenção ficou genérica e pouco detalhada para sustentar a faixa máxima.",
@@ -551,27 +746,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (
-    getPenaltyCount(processed) === 0 &&
+    getPenaltyCountSafe(processed) === 0 &&
     signals.hasLexicalRepetition &&
     signals.hasSimpleSyntax
   ) {
-    applyPenalty(
-      processed,
+    applyTrackedPenalty(
       "competencia_1",
       120,
       "O domínio linguístico foi correto, mas não atingiu nível excepcional de variedade lexical e complexidade sintática.",
       "Busque maior diversidade vocabular, períodos mais bem modulados e construções sintáticas mais complexas sem perder clareza.",
     );
-  }
-
-  if (getLowScoreCount(processed) > 1 && !signals.hasSevereDevelopmentIssue) {
-    if (signals.hasPertinentRepertoire) {
-      ensureMinimumScore(processed, "competencia_2", 160);
-    }
-
-    if (signals.hasBasicIntervention) {
-      ensureMinimumScore(processed, "competencia_5", 160);
-    }
   }
 
   const componentKeys = [
@@ -589,140 +773,37 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     }
   }
 
+  if (signals.hasLowDensity && !hasHighQualityFoundation) {
+    applyTrackedReduction(
+      "competencia_2",
+      40,
+      "Foi identificada baixa densidade argumentativa, com repertório sociocultural frágil, decorativo ou insuficientemente desenvolvido para sustentar a discussão.",
+      "Use repertório sociocultural pertinente e desenvolva melhor a relação dele com o tema, evitando apenas citar autores, leis ou conceitos.",
+    );
+    applyTrackedReduction(
+      "competencia_3",
+      40,
+      "A argumentação permaneceu genérica, com afirmações pouco desenvolvidas e explicação insuficiente de causas, consequências e exemplos concretos.",
+      "Desenvolva melhor cada argumento, explicando mecanismos, impactos e exemplos concretos em vez de apenas afirmar o problema.",
+    );
+    applyTrackedReduction(
+      "competencia_4",
+      40,
+      "A organização do texto não compensou a baixa densidade analítica, o que impediu uma progressão argumentativa mais consistente.",
+      "Use a coesão para aprofundar o raciocínio, articulando melhor explicações, exemplos e desdobramentos dos argumentos.",
+    );
+    applyTrackedReduction(
+      "competencia_5",
+      40,
+      "A proposta de intervenção não superou o nível genérico exigido para uma redação com baixa densidade argumentativa.",
+      "Detalhe melhor agente, ação, meio e finalidade, conectando a proposta aos problemas discutidos no desenvolvimento.",
+    );
+  }
+
   recalculateFinalScore(processed);
 
-  if (signals.hasBasicEssayStructure && (processed.nota_final ?? 0) < 480) {
-    ensureMinimumScore(processed, "competencia_1", 80);
-    ensureMinimumScore(processed, "competencia_2", 120);
-    ensureMinimumScore(processed, "competencia_3", 120);
-    ensureMinimumScore(processed, "competencia_4", 120);
-    ensureMinimumScore(processed, "competencia_5", 120);
-
-    recalculateFinalScore(processed);
-  }
-
-  const shouldApplyMedianEssayFloor =
-    signals.hasBasicEssayStructure &&
-    signals.hasPertinentRepertoire &&
-    signals.hasBasicIntervention &&
-    !signals.hasSevereDevelopmentIssue;
-
-  if (shouldApplyMedianEssayFloor && (processed.nota_final ?? 0) < 760) {
-    ensureMinimumScore(processed, "competencia_2", 160);
-    ensureMinimumScore(processed, "competencia_5", 160);
-    ensureMinimumScore(processed, "competencia_3", 160);
-    ensureMinimumScore(processed, "competencia_4", 160);
-    ensureMinimumScore(processed, "competencia_1", 120);
-    recalculateFinalScore(processed);
-  }
-
-  if (
-    signals.hasBasicEssayStructure &&
-    !signals.hasStrongRepertoire &&
-    (processed.nota_final ?? 0) < 720
-  ) {
-    ensureMinimumScore(processed, "competencia_1", 120);
-    ensureMinimumScore(processed, "competencia_2", 120);
-    ensureMinimumScore(processed, "competencia_3", 160);
-    ensureMinimumScore(processed, "competencia_4", 160);
-    ensureMinimumScore(processed, "competencia_5", 160);
-
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-  }
-
-  const hasValidIntervention = (processed.competencia_5?.nota ?? 0) >= 160;
-  const shouldApplyStructuredEssayFloor =
-    signals.hasCompleteEssayStructure &&
-    signals.hasBasicCohesion &&
-    signals.hasConsistentArgumentation &&
-    signals.hasRelevantRepertoire &&
-    hasValidIntervention &&
-    !signals.hasSevereDevelopmentIssue;
-
-  if (shouldApplyStructuredEssayFloor && (processed.nota_final ?? 0) < 860) {
-    ensureMinimumScore(processed, "competencia_1", 160);
-    ensureMinimumScore(processed, "competencia_3", 160);
-    ensureMinimumScore(processed, "competencia_4", 160);
-    ensureMinimumScore(processed, "competencia_5", 160);
-    ensureMinimumScore(processed, "competencia_2", 160);
-
-    const structuredEssayTotal =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-
-    const excellentCompetencies = [
-      processed.competencia_1?.nota ?? 0,
-      processed.competencia_3?.nota ?? 0,
-      processed.competencia_4?.nota ?? 0,
-      processed.competencia_5?.nota ?? 0,
-    ].filter((score) => score >= 200).length;
-
-    if (structuredEssayTotal < 860 || excellentCompetencies < 3) {
-      if (!signals.hasGenericArgumentation) {
-        ensureMinimumScore(processed, "competencia_3", 200);
-      }
-
-      if (!signals.hasLexicalRepetition && !signals.hasSimpleSyntax) {
-        ensureMinimumScore(processed, "competencia_1", 200);
-      }
-
-      if (signals.hasBasicCohesion && !signals.hasOnlyFunctionalCohesion) {
-        ensureMinimumScore(processed, "competencia_4", 200);
-      }
-
-      if ((processed.competencia_5?.nota ?? 0) >= 160) {
-        ensureMinimumScore(processed, "competencia_5", 200);
-      }
-    }
-
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-  }
-
-  const canReachMaximumScore =
-    signals.hasCompleteEssayStructure &&
-    signals.hasBasicCohesion &&
-    signals.hasExceptionalLanguage &&
-    signals.hasExceptionalArgumentation &&
-    signals.hasExceptionalCohesion &&
-    signals.hasStrongRepertoire &&
-    !signals.hasGenericRepertoire &&
-    signals.hasCompleteIntervention &&
-    signals.hasDetailedIntervention &&
-    !signals.hasSevereDevelopmentIssue &&
-    !signals.hasLexicalRepetition &&
-    !signals.hasSimpleSyntax;
-
-  if (canReachMaximumScore) {
-    ensureMinimumScore(processed, "competencia_1", 200);
-    ensureMinimumScore(processed, "competencia_2", 200);
-    ensureMinimumScore(processed, "competencia_3", 200);
-    ensureMinimumScore(processed, "competencia_4", 200);
-    ensureMinimumScore(processed, "competencia_5", 200);
-
-    processed.nota_final =
-      (processed.competencia_1?.nota ?? 0) +
-      (processed.competencia_2?.nota ?? 0) +
-      (processed.competencia_3?.nota ?? 0) +
-      (processed.competencia_4?.nota ?? 0) +
-      (processed.competencia_5?.nota ?? 0);
-  }
-
-  if (processed.nota_final === 1000 && !signals.isExceptionalEssay && !canReachMaximumScore) {
-    applyPenalty(
-      processed,
+  if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
+    applyTrackedPenalty(
       "competencia_2",
       160,
       "Apesar da boa construção do texto, o repertório não alcançou o nível excepcional exigido para um desempenho perfeito.",
@@ -736,9 +817,8 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if ((processed.nota_final ?? 0) > 960 && !canReachMaximumScore) {
-    applyPenalty(
-      processed,
+  if ((processed.nota_final ?? 0) > 960 && !hasExcellentEssayFoundation) {
+    applyTrackedPenalty(
       "competencia_4",
       160,
       "A organização textual foi consistente, mas não suficientemente sofisticada para sustentar faixa tão elevada.",
@@ -752,9 +832,8 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay && !canReachMaximumScore) {
-    applyPenalty(
-      processed,
+  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay && !hasHighQualityFoundation) {
+    applyTrackedPenalty(
       signals.hasGenericArgumentation ? "competencia_3" : "competencia_5",
       160,
       "A redação apresentou bom desempenho global, mas ainda não atingiu o nível de excelência exigido para ultrapassar a faixa das redações boas.",
@@ -771,6 +850,75 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   if (!processed.resumo_geral) {
     processed.resumo_geral =
       "A redação apresentou qualidades relevantes, mas sofreu penalizações por critérios de rigor semelhantes aos de um corretor humano do ENEM.";
+  }
+
+  if (signals.hasBasicEssayStructure && !isVeryWeakEssay && (processed.nota_final ?? 0) < 480) {
+    raiseFinalScoreToMinimum(processed, 480, [
+      "competencia_5",
+      "competencia_4",
+      "competencia_2",
+      "competencia_3",
+      "competencia_1",
+    ]);
+  }
+
+  if (hasHighQualityFoundation && (processed.nota_final ?? 0) < 880) {
+    raiseFinalScoreToMinimum(processed, 880, [
+      "competencia_2",
+      "competencia_3",
+      "competencia_5",
+      "competencia_4",
+      "competencia_1",
+    ]);
+  }
+
+  if (hasExcellentEssayFoundation && (processed.nota_final ?? 0) < 920) {
+    raiseFinalScoreToMinimum(processed, 920, [
+      "competencia_2",
+      "competencia_3",
+      "competencia_4",
+      "competencia_5",
+      "competencia_1",
+    ]);
+  }
+
+  if (
+    hasHighQualityFoundation &&
+    (beforeScores.nota_final ?? 0) >= 880 &&
+    (processed.nota_final ?? 0) < 880
+  ) {
+    const restoreTargets = [
+      ["competencia_1", beforeScores.competencia_1],
+      ["competencia_2", beforeScores.competencia_2],
+      ["competencia_3", beforeScores.competencia_3],
+      ["competencia_4", beforeScores.competencia_4],
+      ["competencia_5", beforeScores.competencia_5],
+    ] as const;
+
+    for (const [key, beforeScore] of restoreTargets) {
+      const comp = processed[key];
+      if (comp) {
+        comp.nota = normalizeScore(Math.max(comp.nota, beforeScore));
+      }
+    }
+
+    recalculateFinalScore(processed);
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("postProcessEvaluation debug", {
+      beforeScores,
+      afterScores: {
+        competencia_1: processed.competencia_1?.nota ?? 0,
+        competencia_2: processed.competencia_2?.nota ?? 0,
+        competencia_3: processed.competencia_3?.nota ?? 0,
+        competencia_4: processed.competencia_4?.nota ?? 0,
+        competencia_5: processed.competencia_5?.nota ?? 0,
+        nota_final: processed.nota_final ?? 0,
+      },
+      signals,
+      penaltiesApplied,
+    });
   }
 
   return processed;
@@ -1335,73 +1483,83 @@ export async function POST(request: Request) {
       throw new Error("Nenhuma chave de API configurada no ambiente.");
     }
 
-    const promptMestre = `Você é um corretor EXTREMAMENTE RIGOROSO do ENEM, treinado para simular corretores humanos experientes do INEP.
+    const promptMestre = `Você é um corretor experiente de redações do ENEM. Avalie a redação com rigor, justiça e realismo, aproximando-se ao máximo de uma correção humana.
 
-TEMA DA REDAÇÃO: "${normalizedTheme}"
+REGRAS GERAIS:
+- use apenas as notas 0, 40, 80, 120, 160 e 200;
+- não seja motivacional na atribuição da nota;
+- não premie aparência de texto bom;
+- texto organizado, conectivos e linguagem formal não garantem nota alta;
+- não confunda estrutura pronta com qualidade argumentativa;
+- não premie repertório coringa, decorativo ou apenas citado;
+- não penalize em cascata outras competências apenas por erros gramaticais, exceto quando eles prejudicarem a compreensão;
+- reconheça qualidade real quando houver repertório produtivo, argumentação desenvolvida, boa coesão e intervenção consistente.
 
-META DE DISTRIBUIÇÃO:
-- A maioria das boas redações deve ficar entre 880 e 940.
-- Notas acima de 960 devem ser raras.
-- Nota 1000 deve ser extremamente rara e reservada a textos praticamente impecáveis.
-- Evite inflar notas. Na dúvida entre 200 e 160, prefira 160.
+PROCESSO DE CORREÇÃO:
+1. Classifique internamente a redação como fraca, mediana, boa, muito boa ou excelente.
+2. Verifique se o texto:
+- explica causas e consequências;
+- desenvolve argumentos em vez de só afirmar;
+- usa repertório sociocultural pertinente e produtivo;
+- apresenta proposta de intervenção detalhada e relacionada ao problema.
+3. Se a redação for superficial, genérica ou pouco desenvolvida, reduza a nota.
 
-REGRA CENTRAL DE RIGOR:
-- Nota 200 em qualquer competência exige desempenho excepcional, raro e claramente acima da média.
-- Não use 200 com facilidade.
-- Se houver qualquer traço relevante de genericidade, superficialidade, repetição, repertório pouco aprofundado ou linguagem apenas correta, reduza para 160.
+FAIXAS DE REFERÊNCIA:
+- fraca: 500–640;
+- mediana: 680–800;
+- boa: 820–900;
+- muito boa: 920–960;
+- excelente: 960–1000.
 
-CRITÉRIOS PARA 200:
-1. Competência 1:
-- dê 200 quando houver domínio completo da norma padrão, boa variação lexical e estruturas sintáticas complexas;
-- não exija sofisticação extrema para a nota máxima;
-- só reduza abaixo de 200 se houver limitação perceptível de variação, clareza ou domínio formal.
+DEFINIÇÃO DE QUALIDADE:
+- redação boa (800–880): possui estrutura completa, argumentação clara e repertório pertinente, mesmo que não muito aprofundado;
+- redação muito boa (880–920): apresenta repertório produtivo, argumentação consistente e proposta de intervenção válida, mesmo com pequenas falhas;
+- redação excelente (920–1000): apresenta alto nível de aprofundamento, repertório bem integrado e proposta detalhada.
 
-2. Competência 2:
-- dê 200 quando o repertório for pertinente, bem explicado e articulado com a tese;
-- não exija estatísticas, leis ou dados numéricos para a nota máxima;
-- repertório genérico, decorativo ou pouco aprofundado deve ficar em 160;
-- só use faixa inferior se houver fragilidade clara de pertinência ou explicação.
+CALIBRAÇÃO:
+- texto genérico tende a ficar em 500–680, salvo se houver estrutura e algum desenvolvimento relevante;
+- redações superficiais não devem receber nota alta só porque parecem bem escritas;
+- repertório só vale quando é pertinente, explicado e integrado ao argumento;
+- repertório filosófico, histórico, literário, musical ou jurídico pode sustentar nota alta mesmo sem dados estatísticos, desde que esteja bem articulado ao tema;
+- argumentação forte exige desenvolvimento real de causas, consequências, mecanismos e impactos;
+- proposta de intervenção forte exige agente, ação, meio/modo, finalidade e detalhamento;
+- redações excelentes devem poder receber 920–1000 quando houver qualidade real de repertório, argumentação, coesão e intervenção;
+- não exija perfeição para notas acima de 880;
+- pequenas falhas não devem derrubar uma redação boa ou muito boa para faixas muito baixas;
+- nota 1000 deve ser rara, mas possível.
 
-3. Competência 3:
-- só dê 200 se a argumentação for crítica, densa e não genérica;
-- se o texto usar ideias vagas como “problema social”, “falta de respeito”, “cultura de desrespeito” ou “é preciso conscientizar”, sem aprofundamento real, reduza a nota;
-- se os argumentos forem superficiais, repetitivos ou pouco desenvolvidos, use no máximo 160.
+CRITÉRIOS POR COMPETÊNCIA:
+- Competência 1: avalie gramática, ortografia, concordância, regência, pontuação, clareza sintática e domínio da norma padrão.
+- Competência 2: avalie compreensão do tema e uso de repertório sociocultural pertinente, produtivo e conectado à argumentação.
+- Competência 3: avalie seleção, organização e desenvolvimento dos argumentos. Texto genérico, superficial ou repetitivo deve ser penalizado.
+- Competência 4: avalie coesão e progressão textual. Não atribua nota máxima apenas por presença de conectivos.
+- Competência 5: avalie a proposta de intervenção. Proposta vaga ou genérica não deve receber nota alta.
 
-4. Competência 4:
-- só dê 200 se a progressão textual for muito fluida, com excelente articulação entre períodos e parágrafos;
-- mesmo com boa coesão, não dê 200 automaticamente;
-- repetição de conectivos, encadeamento previsível ou progressão pouco refinada impede 200;
-- se a coesão for boa, mas sem sofisticação real, use no máximo 160.
-
-5. Competência 5:
-- só dê 200 se a proposta de intervenção for completa, detalhada, bem articulada e plausível;
-- a intervenção precisa apresentar agente, ação, meio/modo, efeito e detalhamento consistente.
-
-PENALIZAÇÕES OBRIGATÓRIAS:
-- ausência de repertório pertinente ou explicação frágil: limite C2 em 160;
-- argumentação genérica ou superficial: reduza C3;
-- repetição de ideias: reduza C3 e/ou C4;
-- linguagem apenas correta, mas sem sofisticação: limite C1 em 160;
-- boa coesão sem sofisticação real: limite C4 em 160;
-- justifique toda penalização de forma explícita na justificativa e na melhoria.
+ORIENTAÇÕES DE RIGOR:
+- repertório pertinente, mesmo sem sofisticação excepcional, já pode sustentar 160 na Competência 2 e, se for bem integrado, pode sustentar nota mais alta;
+- repertório decorativo ou pouco explicado tende a ficar no máximo em 160 na Competência 2;
+- se houver causa, consequência e explicação clara, considere a argumentação como boa; não a classifique como superficial apenas por não ser extremamente aprofundada;
+- argumentação superficial tende a ficar no máximo em 160 na Competência 3;
+- coesão apenas funcional, repetitiva ou mecânica tende a ficar no máximo em 160 na Competência 4;
+- proposta válida com agente e ação já pode sustentar 160 na Competência 5; maior detalhamento pode elevar ainda mais a nota;
+- proposta genérica tende a ficar no máximo em 160 na Competência 5;
+- nota 200 em qualquer competência exige desempenho muito consistente e bem desenvolvido;
+- uma limitação pontual não deve derrubar drasticamente a nota global se o conjunto da redação for forte;
+- antes de atribuir nota final acima de 920, confirme repertório produtivo, argumentação consistente, boa coesão, intervenção detalhada e domínio linguístico sólido.
+- se a redação tiver estrutura completa, repertório pertinente, argumentação clara e proposta de intervenção válida, não a classifique como fraca e não atribua nota abaixo de 800.
 
 SUGESTÕES DE REESCRITA:
 - selecione até 3 trechos reais da redação que precisam de melhoria;
 - priorize argumento genérico, linguagem simples ou falta de precisão;
-- para cada trecho, mantenha o sentido original, mas reescreva com maior formalidade, especificidade e sofisticação;
-- evite exageros e não invente ideias totalmente novas;
-- cada sugestão precisa conter:
-  - trecho_original
-  - sugestao_reescrita
-  - motivo
+- mantenha o sentido original, mas reescreva com maior formalidade, especificidade e sofisticação;
+- não invente ideias totalmente novas.
 
-ESCALA OFICIAL:
-- 0, 40, 80, 120, 160, 200
-- Use apenas esses valores.
+TEMA DA REDAÇÃO: "${normalizedTheme}"
 
 SAÍDA:
-- Retorne APENAS JSON puro.
-- A nota_final deve ser a soma exata das 5 competências.
+- retorne apenas JSON puro;
+- a nota_final deve ser a soma exata das 5 competências;
+- use exatamente esta estrutura:
 
 {
   "competencia_1": { "nota": 0, "justificativa": "", "melhoria": "" },
