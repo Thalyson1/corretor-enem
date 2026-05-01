@@ -74,6 +74,13 @@ function normalizeScore(score: number) {
   return closest;
 }
 
+function normalizeForMatch(text: string | undefined) {
+  return (text ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
 function appendPenaltyText(base: string | undefined, penalty: string) {
   const normalized = (base ?? "").trim();
 
@@ -548,6 +555,34 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     (signals.isExceptionalEssay ||
       (signals.hasExceptionalLanguage &&
         (signals.hasExceptionalArgumentation || signals.hasExceptionalCohesion)));
+  const getCompetencyFiveCapFromDiagnosis = () => {
+    const competence = processed.competencia_5;
+    const diagnosticText = normalizeForMatch(
+      `${competence?.justificativa ?? ""} ${competence?.melhoria ?? ""}`,
+    );
+
+    const hasSevereInterventionIssue =
+      diagnosticText.includes("vaga") ||
+      diagnosticText.includes("vago") ||
+      diagnosticText.includes("generica") ||
+      diagnosticText.includes("generico");
+    const hasModerateInterventionIssue =
+      diagnosticText.includes("insuficiente") ||
+      diagnosticText.includes("pouco detalhada") ||
+      diagnosticText.includes("pouco detalhado") ||
+      diagnosticText.includes("parcialmente detalhada") ||
+      diagnosticText.includes("parcialmente detalhado");
+
+    if (hasSevereInterventionIssue) {
+      return 120;
+    }
+
+    if (hasModerateInterventionIssue) {
+      return 160;
+    }
+
+    return null;
+  };
   const isVeryWeakEssay =
     !signals.hasBasicEssayStructure ||
     (signals.hasLowDensity &&
@@ -742,6 +777,21 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       160,
       "A proposta de intervenção ficou genérica e pouco detalhada para sustentar a faixa máxima.",
       "Detalhe melhor agente, ação, meio de execução e efeito esperado para tornar a proposta mais completa e consistente.",
+    );
+  }
+
+  const competencyFiveDiagnosisCap = getCompetencyFiveCapFromDiagnosis();
+
+  if (competencyFiveDiagnosisCap !== null) {
+    applyTrackedPenalty(
+      "competencia_5",
+      competencyFiveDiagnosisCap,
+      competencyFiveDiagnosisCap <= 120
+        ? "O pr\xF3prio diagn\xF3stico indica que a proposta de interven\xE7\xE3o ficou vaga ou gen\xE9rica, o que impede nota m\xE1xima nessa compet\xEAncia."
+        : "O pr\xF3prio diagn\xF3stico indica que a proposta de interven\xE7\xE3o ainda est\xE1 insuficiente ou pouco detalhada, o que limita a nota dessa compet\xEAncia.",
+      competencyFiveDiagnosisCap <= 120
+        ? "Especifique melhor agente, a\xE7\xE3o, meio de execu\xE7\xE3o e finalidade para evitar uma interven\xE7\xE3o vaga."
+        : "Aprofunde o detalhamento da proposta, deixando mais claros agente, a\xE7\xE3o, meios e efeito esperado.",
     );
   }
 
