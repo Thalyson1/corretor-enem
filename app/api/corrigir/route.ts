@@ -1026,6 +1026,36 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     recalculateFinalScore(processed);
   }
 
+  const finalCompetencyTwoDiagnosisCap = getCompetencyTwoCapFromDiagnosis();
+
+  if (finalCompetencyTwoDiagnosisCap !== null) {
+    applyPenalty(
+      processed,
+      "competencia_2",
+      finalCompetencyTwoDiagnosisCap,
+      finalCompetencyTwoDiagnosisCap <= 120
+        ? "O diagnóstico final manteve indicação de repertório superficial ou pouco explorado, o que bloqueia definitivamente a nota máxima nessa competência."
+        : "O diagnóstico final manteve indicação de repertório genérico, pouco desenvolvido ou com aprofundamento insuficiente, o que bloqueia definitivamente a nota máxima nessa competência.",
+      finalCompetencyTwoDiagnosisCap <= 120
+        ? "Aprofunde mais o repertório e articule com precisão sua função dentro da argumentação."
+        : "Desenvolva melhor o repertório, mostrando de forma mais clara sua integração com a tese e com os argumentos.",
+    );
+  }
+
+  const finalCompetencyThreeDiagnosisCap = getCompetencyThreeCapFromDiagnosis();
+
+  if (finalCompetencyThreeDiagnosisCap !== null) {
+    applyPenalty(
+      processed,
+      "competencia_3",
+      finalCompetencyThreeDiagnosisCap,
+      "O diagnóstico final manteve indicação de argumentação superficial, genérica ou com aprofundamento insuficiente, o que bloqueia definitivamente a nota máxima nessa competência.",
+      "Aprofunde causas, consequências e explicações para tornar o desenvolvimento argumentativo mais completo e consistente.",
+    );
+  }
+
+  recalculateFinalScore(processed);
+
   if (process.env.NODE_ENV !== "production") {
     console.info("postProcessEvaluation debug", {
       beforeScores,
