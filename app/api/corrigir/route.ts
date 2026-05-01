@@ -555,6 +555,51 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     (signals.isExceptionalEssay ||
       (signals.hasExceptionalLanguage &&
         (signals.hasExceptionalArgumentation || signals.hasExceptionalCohesion)));
+  const getCompetencyTwoCapFromDiagnosis = () => {
+    const competence = processed.competencia_2;
+    const diagnosticText = normalizeForMatch(
+      `${competence?.justificativa ?? ""} ${competence?.melhoria ?? ""}`,
+    );
+
+    if (
+      diagnosticText.includes("repertorio pouco explorado") ||
+      diagnosticText.includes("repertorio superficial") ||
+      diagnosticText.includes("superficial") ||
+      diagnosticText.includes("pouco desenvolvido") ||
+      diagnosticText.includes("pouco desenvolvida") ||
+      diagnosticText.includes("generico") ||
+      diagnosticText.includes("generica") ||
+      diagnosticText.includes("falta aprofundamento") ||
+      diagnosticText.includes("aprofundamento insuficiente")
+    ) {
+      return diagnosticText.includes("repertorio superficial") || diagnosticText.includes("superficial")
+        ? 120
+        : 160;
+    }
+
+    return null;
+  };
+  const getCompetencyThreeCapFromDiagnosis = () => {
+    const competence = processed.competencia_3;
+    const diagnosticText = normalizeForMatch(
+      `${competence?.justificativa ?? ""} ${competence?.melhoria ?? ""}`,
+    );
+
+    if (
+      diagnosticText.includes("argumentacao superficial") ||
+      diagnosticText.includes("superficial") ||
+      diagnosticText.includes("pouco desenvolvido") ||
+      diagnosticText.includes("pouco desenvolvida") ||
+      diagnosticText.includes("generico") ||
+      diagnosticText.includes("generica") ||
+      diagnosticText.includes("falta aprofundamento") ||
+      diagnosticText.includes("aprofundamento insuficiente")
+    ) {
+      return 160;
+    }
+
+    return null;
+  };
   const getCompetencyFiveCapFromDiagnosis = () => {
     const competence = processed.competencia_5;
     const diagnosticText = normalizeForMatch(
@@ -777,6 +822,32 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       160,
       "A proposta de intervenção ficou genérica e pouco detalhada para sustentar a faixa máxima.",
       "Detalhe melhor agente, ação, meio de execução e efeito esperado para tornar a proposta mais completa e consistente.",
+    );
+  }
+
+  const competencyTwoDiagnosisCap = getCompetencyTwoCapFromDiagnosis();
+
+  if (competencyTwoDiagnosisCap !== null) {
+    applyTrackedPenalty(
+      "competencia_2",
+      competencyTwoDiagnosisCap,
+      competencyTwoDiagnosisCap <= 120
+        ? "O próprio diagnóstico indica repertório superficial ou pouco explorado, o que impede nota máxima nessa competência."
+        : "O próprio diagnóstico indica repertório genérico, pouco desenvolvido ou com aprofundamento insuficiente, o que limita a nota dessa competência.",
+      competencyTwoDiagnosisCap <= 120
+        ? "Aprofunde a explicação do repertório e articule melhor sua relação com a tese e com os argumentos do texto."
+        : "Desenvolva melhor o repertório, mostrando de forma mais clara como ele sustenta a argumentação proposta.",
+    );
+  }
+
+  const competencyThreeDiagnosisCap = getCompetencyThreeCapFromDiagnosis();
+
+  if (competencyThreeDiagnosisCap !== null) {
+    applyTrackedPenalty(
+      "competencia_3",
+      competencyThreeDiagnosisCap,
+      "O próprio diagnóstico indica argumentação superficial, genérica ou com aprofundamento insuficiente, o que impede nota máxima nessa competência.",
+      "Desenvolva melhor causas, consequências e explicações, tornando o raciocínio mais completo e menos genérico.",
     );
   }
 
