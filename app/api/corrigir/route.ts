@@ -619,9 +619,13 @@ function classifyEssayLevel(
     signals.hasCriticalAnalysis &&
     signals.hasRefinedProgression &&
     signals.hasCompleteIntervention &&
-    (signals.hasStrongRepertoire || signals.hasRelevantRepertoire)
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention &&
+    (signals.hasStrongRepertoire || signals.hasRelevantRepertoire || signals.hasPertinentRepertoire)
   ) {
-    return options.hasExcellentEssayFoundation ? "muito_boa" : "boa";
+    return options.hasExcellentEssayFoundation || signals.hasDetailedIntervention
+      ? "muito_boa"
+      : "boa";
   }
 
   if (
@@ -702,6 +706,21 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       `${competence?.justificativa ?? ""} ${competence?.melhoria ?? ""}`,
     );
 
+    const hasPositiveRepertoireDiagnosis =
+      diagnosticText.includes("pertinente") ||
+      diagnosticText.includes("produtivo") ||
+      diagnosticText.includes("bem integrado") ||
+      diagnosticText.includes("articulado") ||
+      diagnosticText.includes("conectado a tese") ||
+      diagnosticText.includes("fundamenta o argumento");
+
+    if (
+      hasPositiveRepertoireDiagnosis &&
+      (signals.hasStrongRepertoire || signals.hasRelevantRepertoire || signals.hasPertinentRepertoire)
+    ) {
+      return null;
+    }
+
     if (
       diagnosticText.includes("repertorio pouco explorado") ||
       diagnosticText.includes("repertorio superficial") ||
@@ -749,9 +768,14 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
     const hasPositiveInterventionDiagnosis =
       diagnosticText.includes("completa") ||
+      diagnosticText.includes("valida") ||
       diagnosticText.includes("detalhada") ||
       diagnosticText.includes("detalhado") ||
-      diagnosticText.includes("atende plenamente");
+      diagnosticText.includes("atende plenamente") ||
+      diagnosticText.includes("agente") ||
+      diagnosticText.includes("acao") ||
+      diagnosticText.includes("meio") ||
+      diagnosticText.includes("finalidade");
 
     if (
       (signals.hasCompleteIntervention &&
@@ -1024,6 +1048,27 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
         ? "Aprofunde a explicação do repertório e articule melhor sua relação com a tese e com os argumentos do texto."
         : "Desenvolva melhor o repertório, mostrando de forma mais clara como ele sustenta a argumentação proposta.",
     );
+  }
+
+  const competenceTwo = processed.competencia_2;
+  const competenceTwoDiagnosis = normalizeForMatch(
+    `${competenceTwo?.justificativa ?? ""} ${competenceTwo?.melhoria ?? ""}`,
+  );
+  const hasPositiveRepertoireDiagnosis =
+    competenceTwoDiagnosis.includes("pertinente") ||
+    competenceTwoDiagnosis.includes("produtivo") ||
+    competenceTwoDiagnosis.includes("bem integrado") ||
+    competenceTwoDiagnosis.includes("articulado") ||
+    competenceTwoDiagnosis.includes("conectado a tese") ||
+    competenceTwoDiagnosis.includes("fundamenta o argumento");
+
+  if (
+    competenceTwo &&
+    hasPositiveRepertoireDiagnosis &&
+    (signals.hasStrongRepertoire || signals.hasRelevantRepertoire || signals.hasPertinentRepertoire) &&
+    competenceTwo.nota < 200
+  ) {
+    competenceTwo.nota = normalizeScore(200);
   }
 
   const competencyThreeDiagnosisCap = getCompetencyThreeCapFromDiagnosis();
