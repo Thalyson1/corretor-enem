@@ -496,10 +496,17 @@ function analyzeEssaySignals(text: string) {
     hasRepetitionProblem: repetitionCount >= 2,
     hasSevereDevelopmentIssue: genericArgumentCount >= 4 || repetitionCount >= 4,
     hasExceptionalLanguage:
-      lexicalVariety >= 0.55 && averageWordLength >= 4.8 && connectorCount >= 4,
+      lexicalVariety >= 0.5 && averageWordLength >= 4.5 && connectorCount >= 3,
     hasExceptionalArgumentation:
-      !genericArgumentCount && repetitionCount === 0 && connectorCount >= 4,
+      explanationMarkerCount >= 4 &&
+      genericArgumentCount <= 1 &&
+      repetitionCount <= 1,
     hasExceptionalCohesion: connectorCount >= 5 && repetitionCount === 0,
+    hasCriticalAnalysis:
+      explanationMarkerCount >= 4 &&
+      genericArgumentCount <= 1 &&
+      repetitionCount <= 1,
+    hasRefinedProgression: connectorCount >= 3 && repetitionCount <= 1,
     hasOnlyFunctionalCohesion:
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
     hasRelevantRepertoire:
@@ -545,11 +552,19 @@ function analyzeEssaySignals(text: string) {
       normalized.includes("com o objetivo de") ||
       normalized.includes("deve promover"),
     isExceptionalEssay:
-      lexicalVariety >= 0.55 &&
-      averageWordLength >= 4.8 &&
-      connectorCount >= 4 &&
-      (strongRepertoireCount >= 1 || concreteDataCount >= 1) &&
+      paragraphCount >= 4 &&
+      connectorCount >= 3 &&
+      explanationMarkerCount >= 4 &&
+      interventionAgentCount >= 1 &&
+      interventionActionCount >= 1 &&
+      interventionIntentCount >= 1 &&
+      (strongRepertoireCount >= 1 ||
+        concreteDataCount >= 1 ||
+        (repertoireReferenceCount >= 1 &&
+          explanationMarkerCount >= 3 &&
+          genericRepertoireCount === 0)) &&
       genericArgumentCount <= 1 &&
+      genericRepertoireCount === 0 &&
       repetitionCount <= 1,
   };
 }
@@ -627,6 +642,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     to: number;
     type: "cap" | "reduction";
     amount: number;
+    reason: string;
+  }> = [];
+  const boostsApplied: Array<{
+    from: number;
+    to: number;
+    minimum: number;
     reason: string;
   }> = [];
   const hasHighQualityFoundation =
@@ -750,6 +771,33 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     }
 
     return affectedCompetencies.size < 2;
+  };
+  const applyTrackedMinimumScore = (
+    minimum: number,
+    priority: Array<
+      keyof Pick<
+        CorrectionResult,
+        | "competencia_1"
+        | "competencia_2"
+        | "competencia_3"
+        | "competencia_4"
+        | "competencia_5"
+      >
+    >,
+    reason: string,
+  ) => {
+    const before = processed.nota_final ?? 0;
+    raiseFinalScoreToMinimum(processed, minimum, priority);
+    const after = processed.nota_final ?? 0;
+
+    if (after > before) {
+      boostsApplied.push({
+        from: before,
+        to: after,
+        minimum,
+        reason,
+      });
+    }
   };
   const applyTrackedPenalty = (
     key: keyof Pick<
@@ -1073,59 +1121,6 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       "A redação apresentou qualidades relevantes, mas sofreu penalizações por critérios de rigor semelhantes aos de um corretor humano do ENEM.";
   }
 
-  if (signals.hasBasicEssayStructure && !isVeryWeakEssay && (processed.nota_final ?? 0) < 480) {
-    raiseFinalScoreToMinimum(processed, 480, [
-      "competencia_5",
-      "competencia_4",
-      "competencia_2",
-      "competencia_3",
-      "competencia_1",
-    ]);
-  }
-
-  if (hasHighQualityFoundation && (processed.nota_final ?? 0) < 880) {
-    raiseFinalScoreToMinimum(processed, 880, [
-      "competencia_2",
-      "competencia_3",
-      "competencia_5",
-      "competencia_4",
-      "competencia_1",
-    ]);
-  }
-
-  if (hasTopTierFoundation && (processed.nota_final ?? 0) < 920) {
-    raiseFinalScoreToMinimum(processed, 920, [
-      "competencia_2",
-      "competencia_3",
-      "competencia_4",
-      "competencia_5",
-      "competencia_1",
-    ]);
-  }
-
-  if (
-    hasHighQualityFoundation &&
-    (beforeScores.nota_final ?? 0) >= 880 &&
-    (processed.nota_final ?? 0) < 880
-  ) {
-    const restoreTargets = [
-      ["competencia_1", beforeScores.competencia_1],
-      ["competencia_2", beforeScores.competencia_2],
-      ["competencia_3", beforeScores.competencia_3],
-      ["competencia_4", beforeScores.competencia_4],
-      ["competencia_5", beforeScores.competencia_5],
-    ] as const;
-
-    for (const [key, beforeScore] of restoreTargets) {
-      const comp = processed[key];
-      if (comp) {
-        comp.nota = normalizeScore(Math.max(comp.nota, beforeScore));
-      }
-    }
-
-    recalculateFinalScore(processed);
-  }
-
   const finalCompetencyTwoDiagnosisCap = getCompetencyTwoCapFromDiagnosis();
 
   if (finalCompetencyTwoDiagnosisCap !== null) {
@@ -1156,22 +1151,6 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   recalculateFinalScore(processed);
 
-  if (
-    canReachMaximumScore &&
-    finalCompetencyTwoDiagnosisCap === null &&
-    finalCompetencyThreeDiagnosisCap === null &&
-    competencyFiveDiagnosisCap === null &&
-    (processed.nota_final ?? 0) < 920
-  ) {
-    raiseFinalScoreToMinimum(processed, 920, [
-      "competencia_2",
-      "competencia_3",
-      "competencia_5",
-      "competencia_4",
-      "competencia_1",
-    ]);
-  }
-
   const hasNegativeDiagnosisCaps =
     finalCompetencyTwoDiagnosisCap !== null ||
     finalCompetencyThreeDiagnosisCap !== null ||
@@ -1183,25 +1162,40 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     hasNegativeDiagnosisCaps,
   });
 
+  if (
+    signals.hasBasicEssayStructure &&
+    !isVeryWeakEssay &&
+    (processed.nota_final ?? 0) < 480 &&
+    (beforeScores.nota_final ?? 0) >= 360
+  ) {
+    applyTrackedMinimumScore(
+      480,
+      ["competencia_5", "competencia_4", "competencia_2", "competencia_3", "competencia_1"],
+      "Piso de estrutura básica aplicado porque a redação apresentou organização mínima e a nota bruta já indicava desenvolvimento suficiente para não ficar abaixo dessa faixa.",
+    );
+  }
+
   if (essayLevel === "excelente" && !hasNegativeDiagnosisCaps && (processed.nota_final ?? 0) < 960) {
-    raiseFinalScoreToMinimum(processed, 960, [
-      "competencia_2",
-      "competencia_3",
-      "competencia_5",
-      "competencia_4",
-      "competencia_1",
-    ]);
+    if ((beforeScores.nota_final ?? 0) >= 920) {
+      applyTrackedMinimumScore(
+        960,
+        ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+        "Piso de excelência aplicado porque a nota bruta já veio alta e os sinais textuais indicam repertório integrado, argumentação consistente, progressão clara e intervenção completa.",
+      );
+    }
   }
 
   if (essayLevel === "muito_boa") {
-    if ((processed.nota_final ?? 0) < 880 && !hasNegativeDiagnosisCaps) {
-      raiseFinalScoreToMinimum(processed, 880, [
-        "competencia_2",
-        "competencia_3",
-        "competencia_5",
-        "competencia_4",
-        "competencia_1",
-      ]);
+    if (
+      (processed.nota_final ?? 0) < 880 &&
+      !hasNegativeDiagnosisCaps &&
+      (beforeScores.nota_final ?? 0) >= 840
+    ) {
+      applyTrackedMinimumScore(
+        880,
+        ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+        "Piso de redação muito boa aplicado porque a nota bruta já estava próxima da faixa e os sinais textuais sustentam desenvolvimento consistente.",
+      );
     }
 
     if ((processed.nota_final ?? 0) > 920) {
@@ -1216,14 +1210,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (essayLevel === "boa") {
-    if ((processed.nota_final ?? 0) < 800 && !hasNegativeDiagnosisCaps) {
-      raiseFinalScoreToMinimum(processed, 800, [
-        "competencia_2",
-        "competencia_3",
-        "competencia_5",
-        "competencia_4",
-        "competencia_1",
-      ]);
+    if (
+      (processed.nota_final ?? 0) < 800 &&
+      !hasNegativeDiagnosisCaps &&
+      (beforeScores.nota_final ?? 0) >= 760
+    ) {
+      applyTrackedMinimumScore(
+        800,
+        ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+        "Piso de redação boa aplicado porque a nota bruta já indicava qualidade alta e a redação apresenta estrutura completa com argumentação coerente.",
+      );
     }
 
     if ((processed.nota_final ?? 0) > 880) {
@@ -1238,14 +1234,16 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (essayLevel === "intermediaria") {
-    if ((processed.nota_final ?? 0) < 680 && signals.hasBasicEssayStructure) {
-      raiseFinalScoreToMinimum(processed, 680, [
-        "competencia_5",
-        "competencia_4",
-        "competencia_2",
-        "competencia_3",
-        "competencia_1",
-      ]);
+    if (
+      (processed.nota_final ?? 0) < 680 &&
+      signals.hasBasicEssayStructure &&
+      (beforeScores.nota_final ?? 0) >= 560
+    ) {
+      applyTrackedMinimumScore(
+        680,
+        ["competencia_5", "competencia_4", "competencia_2", "competencia_3", "competencia_1"],
+        "Piso de redação intermediária aplicado porque a redação apresenta estrutura e a nota bruta já apontava desempenho acima da faixa fraca.",
+      );
     }
 
     if ((processed.nota_final ?? 0) > 800) {
@@ -1281,7 +1279,33 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   recalculateFinalScore(processed);
 
-  if (process.env.NODE_ENV !== "production") {
+  const postProcessSummary = {
+    rawAiScore: beforeScores.nota_final ?? 0,
+    postProcessedScore: processed.nota_final ?? 0,
+    essayLevel,
+    keySignals: {
+      hasTopTierFoundation,
+      hasExcellentEssayFoundation,
+      canReachMaximumScore,
+      hasStrongRepertoire: signals.hasStrongRepertoire,
+      hasRelevantRepertoire: signals.hasRelevantRepertoire,
+      hasConsistentArgumentation: signals.hasConsistentArgumentation,
+      hasDevelopedArgumentation: signals.hasDevelopedArgumentation,
+      hasCriticalAnalysis: signals.hasCriticalAnalysis,
+      hasRefinedProgression: signals.hasRefinedProgression,
+      hasCompleteIntervention: signals.hasCompleteIntervention,
+      hasDetailedIntervention: signals.hasDetailedIntervention,
+      hasGenericRepertoire: signals.hasGenericRepertoire,
+      hasGenericArgumentation: signals.hasGenericArgumentation,
+      hasGenericIntervention: signals.hasGenericIntervention,
+    },
+    penaltiesApplied,
+    boostsApplied,
+  };
+
+  if (process.env.NODE_ENV === "production") {
+    console.info("postProcessEvaluation production", postProcessSummary);
+  } else {
     console.info("postProcessEvaluation debug", {
       beforeScores,
       afterScores: {
@@ -1292,9 +1316,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
         competencia_5: processed.competencia_5?.nota ?? 0,
         nota_final: processed.nota_final ?? 0,
       },
-      essayLevel,
-      signals,
-      penaltiesApplied,
+      ...postProcessSummary,
     });
   }
 
