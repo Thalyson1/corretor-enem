@@ -747,7 +747,18 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       `${competence?.justificativa ?? ""} ${competence?.melhoria ?? ""}`,
     );
 
-    if (signals.hasCompleteIntervention && !signals.hasGenericIntervention) {
+    const hasPositiveInterventionDiagnosis =
+      diagnosticText.includes("completa") ||
+      diagnosticText.includes("detalhada") ||
+      diagnosticText.includes("detalhado") ||
+      diagnosticText.includes("atende plenamente");
+
+    if (
+      (signals.hasCompleteIntervention &&
+        signals.hasDetailedIntervention &&
+        !signals.hasGenericIntervention) ||
+      hasPositiveInterventionDiagnosis
+    ) {
       return null;
     }
 
@@ -763,7 +774,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       diagnosticText.includes("parcialmente detalhada") ||
       diagnosticText.includes("parcialmente detalhado");
 
-    if (hasSevereInterventionIssue) {
+    if (
+      hasSevereInterventionIssue &&
+      (signals.hasGenericIntervention || !signals.hasCompleteIntervention)
+    ) {
       return 120;
     }
 
@@ -1044,8 +1058,21 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     !signals.hasGenericIntervention
   ) {
     const competenceFive = processed.competencia_5;
-    if (competenceFive && competenceFive.nota < 160) {
-      competenceFive.nota = normalizeScore(160);
+    const competenceFiveDiagnosis = normalizeForMatch(
+      `${competenceFive?.justificativa ?? ""} ${competenceFive?.melhoria ?? ""}`,
+    );
+    const hasPositiveInterventionDiagnosis =
+      competenceFiveDiagnosis.includes("completa") ||
+      competenceFiveDiagnosis.includes("detalhada") ||
+      competenceFiveDiagnosis.includes("detalhado") ||
+      competenceFiveDiagnosis.includes("atende plenamente");
+
+    if (competenceFive) {
+      if (hasPositiveInterventionDiagnosis && competenceFive.nota < 200) {
+        competenceFive.nota = normalizeScore(200);
+      } else if (competenceFive.nota < 160) {
+        competenceFive.nota = normalizeScore(160);
+      }
     }
   }
 
