@@ -727,6 +727,10 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       `${competence?.justificativa ?? ""} ${competence?.melhoria ?? ""}`,
     );
 
+    if (signals.hasCompleteIntervention && !signals.hasGenericIntervention) {
+      return null;
+    }
+
     const hasSevereInterventionIssue =
       diagnosticText.includes("vaga") ||
       diagnosticText.includes("vago") ||
@@ -1014,6 +1018,13 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
+  if (signals.hasCompleteIntervention && !signals.hasGenericIntervention) {
+    const competenceFive = processed.competencia_5;
+    if (competenceFive && competenceFive.nota < 160) {
+      competenceFive.nota = normalizeScore(160);
+    }
+  }
+
   if (
     getPenaltyCountSafe(processed) === 0 &&
     signals.hasLexicalRepetition &&
@@ -1163,6 +1174,30 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   });
 
   if (
+    hasExcellentEssayFoundation &&
+    (processed.nota_final ?? 0) < 920
+  ) {
+    applyTrackedMinimumScore(
+      920,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Piso de excelência aplicado porque os sinais de fundação excelente foram confirmados, impedindo que a nota final fique abaixo da faixa esperada.",
+    );
+  }
+
+  if (
+    essayLevel === "excelente" &&
+    (processed.nota_final ?? 0) < (canReachMaximumScore ? 920 : 880)
+  ) {
+    applyTrackedMinimumScore(
+      canReachMaximumScore ? 920 : 880,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      canReachMaximumScore
+        ? "Piso de redação excelente aplicado porque a classificação e os sinais de nota máxima indicam que a redação não pode permanecer abaixo de 920."
+        : "Piso de redação excelente aplicado porque a classificação interna reconheceu alto nível global, impedindo nota abaixo de 880.",
+    );
+  }
+
+  if (
     signals.hasBasicEssayStructure &&
     !isVeryWeakEssay &&
     (processed.nota_final ?? 0) < 480 &&
@@ -1176,7 +1211,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   if (essayLevel === "excelente" && !hasNegativeDiagnosisCaps && (processed.nota_final ?? 0) < 960) {
-    if ((beforeScores.nota_final ?? 0) >= 920) {
+    if (canReachMaximumScore || (beforeScores.nota_final ?? 0) >= 920) {
       applyTrackedMinimumScore(
         960,
         ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
