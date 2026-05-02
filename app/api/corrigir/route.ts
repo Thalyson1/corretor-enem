@@ -244,6 +244,36 @@ function raiseFinalScoreToMinimum(
   }
 }
 
+function reduceFinalScoreToMaximum(
+  result: CorrectionResult,
+  maximum: number,
+  priority: Array<
+    keyof Pick<
+      CorrectionResult,
+      | "competencia_1"
+      | "competencia_2"
+      | "competencia_3"
+      | "competencia_4"
+      | "competencia_5"
+    >
+  >,
+) {
+  recalculateFinalScore(result);
+
+  for (const key of priority) {
+    const comp = result[key];
+
+    while (comp && (result.nota_final ?? 0) > maximum && comp.nota > 0) {
+      comp.nota = normalizeScore(comp.nota - 40);
+      recalculateFinalScore(result);
+    }
+
+    if ((result.nota_final ?? 0) <= maximum) {
+      return;
+    }
+  }
+}
+
 function tokenizeWords(text: string) {
   return text
     .toLowerCase()
@@ -522,6 +552,62 @@ function analyzeEssaySignals(text: string) {
       genericArgumentCount <= 1 &&
       repetitionCount <= 1,
   };
+}
+
+type EssayLevel =
+  | "muito_fraca"
+  | "fraca"
+  | "intermediaria"
+  | "boa"
+  | "muito_boa"
+  | "excelente";
+
+function classifyEssayLevel(
+  signals: ReturnType<typeof analyzeEssaySignals>,
+  options: {
+    hasTopTierFoundation: boolean;
+    hasExcellentEssayFoundation: boolean;
+    canReachMaximumScore: boolean;
+    hasNegativeDiagnosisCaps: boolean;
+  },
+): EssayLevel {
+  if (
+    !signals.hasBasicEssayStructure &&
+    (signals.hasLowDensity || signals.hasSevereDevelopmentIssue)
+  ) {
+    return "muito_fraca";
+  }
+
+  if (
+    !signals.hasCompleteEssayStructure ||
+    (signals.hasLowDensity && !signals.hasBasicIntervention)
+  ) {
+    return "fraca";
+  }
+
+  if (options.canReachMaximumScore && !options.hasNegativeDiagnosisCaps) {
+    return "excelente";
+  }
+
+  if (
+    options.hasTopTierFoundation &&
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericRepertoire &&
+    !signals.hasGenericIntervention
+  ) {
+    return options.hasExcellentEssayFoundation ? "excelente" : "muito_boa";
+  }
+
+  if (
+    signals.hasCompleteEssayStructure &&
+    signals.hasPertinentRepertoire &&
+    signals.hasConsistentArgumentation &&
+    signals.hasBasicIntervention
+  ) {
+    return "boa";
+  }
+
+  return "intermediaria";
 }
 
 function postProcessEvaluation(result: CorrectionResult, essayText: string) {
@@ -1086,6 +1172,115 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     ]);
   }
 
+  const hasNegativeDiagnosisCaps =
+    finalCompetencyTwoDiagnosisCap !== null ||
+    finalCompetencyThreeDiagnosisCap !== null ||
+    competencyFiveDiagnosisCap !== null;
+  const essayLevel = classifyEssayLevel(signals, {
+    hasTopTierFoundation,
+    hasExcellentEssayFoundation,
+    canReachMaximumScore,
+    hasNegativeDiagnosisCaps,
+  });
+
+  if (essayLevel === "excelente" && !hasNegativeDiagnosisCaps && (processed.nota_final ?? 0) < 960) {
+    raiseFinalScoreToMinimum(processed, 960, [
+      "competencia_2",
+      "competencia_3",
+      "competencia_5",
+      "competencia_4",
+      "competencia_1",
+    ]);
+  }
+
+  if (essayLevel === "muito_boa") {
+    if ((processed.nota_final ?? 0) < 880 && !hasNegativeDiagnosisCaps) {
+      raiseFinalScoreToMinimum(processed, 880, [
+        "competencia_2",
+        "competencia_3",
+        "competencia_5",
+        "competencia_4",
+        "competencia_1",
+      ]);
+    }
+
+    if ((processed.nota_final ?? 0) > 920) {
+      reduceFinalScoreToMaximum(processed, 920, [
+        "competencia_4",
+        "competencia_1",
+        "competencia_5",
+        "competencia_2",
+        "competencia_3",
+      ]);
+    }
+  }
+
+  if (essayLevel === "boa") {
+    if ((processed.nota_final ?? 0) < 800 && !hasNegativeDiagnosisCaps) {
+      raiseFinalScoreToMinimum(processed, 800, [
+        "competencia_2",
+        "competencia_3",
+        "competencia_5",
+        "competencia_4",
+        "competencia_1",
+      ]);
+    }
+
+    if ((processed.nota_final ?? 0) > 880) {
+      reduceFinalScoreToMaximum(processed, 880, [
+        "competencia_5",
+        "competencia_4",
+        "competencia_1",
+        "competencia_2",
+        "competencia_3",
+      ]);
+    }
+  }
+
+  if (essayLevel === "intermediaria") {
+    if ((processed.nota_final ?? 0) < 680 && signals.hasBasicEssayStructure) {
+      raiseFinalScoreToMinimum(processed, 680, [
+        "competencia_5",
+        "competencia_4",
+        "competencia_2",
+        "competencia_3",
+        "competencia_1",
+      ]);
+    }
+
+    if ((processed.nota_final ?? 0) > 800) {
+      reduceFinalScoreToMaximum(processed, 800, [
+        "competencia_5",
+        "competencia_4",
+        "competencia_2",
+        "competencia_3",
+        "competencia_1",
+      ]);
+    }
+  }
+
+  if (essayLevel === "fraca" && (processed.nota_final ?? 0) > 640) {
+    reduceFinalScoreToMaximum(processed, 640, [
+      "competencia_5",
+      "competencia_4",
+      "competencia_2",
+      "competencia_3",
+      "competencia_1",
+    ]);
+  }
+
+  if (essayLevel === "muito_fraca" && (processed.nota_final ?? 0) > 520) {
+    reduceFinalScoreToMaximum(processed, 520, [
+      "competencia_5",
+      "competencia_4",
+      "competencia_2",
+      "competencia_3",
+      "competencia_1",
+    ]);
+  }
+
+  recalculateFinalScore(processed);
+
   if (process.env.NODE_ENV !== "production") {
     console.info("postProcessEvaluation debug", {
       beforeScores,
@@ -1097,6 +1292,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
         competencia_5: processed.competencia_5?.nota ?? 0,
         nota_final: processed.nota_final ?? 0,
       },
+      essayLevel,
       signals,
       penaltiesApplied,
     });
@@ -1677,7 +1873,7 @@ REGRAS GERAIS:
 - reconheça qualidade real quando houver repertório produtivo, argumentação desenvolvida, boa coesão e intervenção consistente.
 
 PROCESSO DE CORREÇÃO:
-1. Classifique internamente a redação como fraca, mediana, boa, muito boa ou excelente.
+1. Classifique internamente a redação como muito fraca, fraca, intermediária, boa, muito boa ou excelente.
 2. Verifique se o texto:
 - explica causas e consequências;
 - desenvolve argumentos em vez de só afirmar;
@@ -1686,23 +1882,27 @@ PROCESSO DE CORREÇÃO:
 3. Se a redação for superficial, genérica ou pouco desenvolvida, reduza a nota.
 
 FAIXAS DE REFERÊNCIA:
-- fraca: 500–640;
-- mediana: 680–800;
-- boa: 820–900;
-- muito boa: 920–960;
+- muito fraca: 0–520;
+- fraca: 520–640;
+- intermediária: 680–800;
+- boa: 800–880;
+- muito boa: 880–920;
 - excelente: 960–1000.
 
 DEFINIÇÃO DE QUALIDADE:
-- redação boa (800–880): possui estrutura completa, argumentação clara e repertório pertinente, mesmo que não muito aprofundado;
-- redação muito boa (880–920): apresenta repertório produtivo, argumentação consistente e proposta de intervenção válida, mesmo com pequenas falhas;
-- redação excelente (920–1000): apresenta repertório bem integrado, argumentação consistente, boa coesão e proposta de intervenção completa, mesmo que haja pequenas limitações pontuais;
+- redação boa (800–880): possui estrutura completa, argumentos corretos, mas previsíveis, e repertório pertinente ainda pouco explorado;
+- redação muito boa (880–920): apresenta argumentos bem desenvolvidos, repertório integrado e proposta de intervenção consistente, mesmo sem refinamento máximo;
+- redação excelente (960–1000): apresenta análise profunda, criticidade, conexão refinada entre ideias, repertório muito bem articulado e intervenção completa e bem detalhada;
 
 CALIBRAÇÃO:
 - texto genérico tende a ficar em 500–680, salvo se houver estrutura e algum desenvolvimento relevante;
 - redações superficiais não devem receber nota alta só porque parecem bem escritas;
 - repertório só vale quando é pertinente, explicado e integrado ao argumento;
+- repertório apenas citado ou previsível não transforma automaticamente a redação em excelente;
 - repertório filosófico, histórico, literário, musical ou jurídico pode sustentar nota alta mesmo sem dados estatísticos, desde que esteja bem articulado ao tema;
 - argumentação forte exige desenvolvimento real de causas, consequências, mecanismos e impactos;
+- texto genérico ou previsível deve ficar no máximo na faixa das redações boas;
+- redação muito boa, mas ainda sem refinamento crítico, deve ficar no máximo em 920;
 - proposta de intervenção forte exige agente, ação, meio/modo e finalidade; maior detalhamento pode elevar ainda mais a avaliação, mas pequenas limitações não impedem nota alta;
 - redações excelentes devem poder receber 920–1000 quando houver qualidade real de repertório, argumentação, coesão e intervenção;
 - não exija perfeição para notas acima de 880;
