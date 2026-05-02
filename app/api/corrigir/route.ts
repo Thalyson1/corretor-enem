@@ -549,12 +549,26 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     signals.hasDevelopedArgumentation &&
     signals.hasCompleteIntervention &&
     signals.hasGoodCohesion;
+  const hasTopTierFoundation =
+    signals.hasCompleteEssayStructure &&
+    (signals.hasRelevantRepertoire || signals.hasPertinentRepertoire) &&
+    signals.hasConsistentArgumentation &&
+    signals.hasBasicIntervention &&
+    signals.hasBasicCohesion &&
+    !signals.hasSevereDevelopmentIssue;
   const hasExcellentEssayFoundation =
-    hasHighQualityFoundation &&
-    !signals.hasSevereDevelopmentIssue &&
+    hasTopTierFoundation &&
     (signals.isExceptionalEssay ||
-      (signals.hasExceptionalLanguage &&
-        (signals.hasExceptionalArgumentation || signals.hasExceptionalCohesion)));
+      signals.hasStrongRepertoire ||
+      signals.hasDetailedIntervention ||
+      signals.hasExceptionalArgumentation ||
+      signals.hasExceptionalCohesion ||
+      signals.hasExceptionalLanguage);
+  const canReachMaximumScore =
+    hasTopTierFoundation &&
+    !signals.hasGenericIntervention &&
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericRepertoire;
   const getCompetencyTwoCapFromDiagnosis = () => {
     const competence = processed.competencia_2;
     const diagnosticText = normalizeForMatch(
@@ -923,7 +937,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   recalculateFinalScore(processed);
 
-  if (processed.nota_final === 1000 && !signals.isExceptionalEssay) {
+  if (processed.nota_final === 1000 && !canReachMaximumScore) {
     applyTrackedPenalty(
       "competencia_2",
       160,
@@ -953,7 +967,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       (processed.competencia_5?.nota ?? 0);
   }
 
-  if ((processed.nota_final ?? 0) > 920 && !signals.isExceptionalEssay && !hasHighQualityFoundation) {
+  if ((processed.nota_final ?? 0) > 920 && !hasTopTierFoundation) {
     applyTrackedPenalty(
       signals.hasGenericArgumentation ? "competencia_3" : "competencia_5",
       160,
@@ -993,7 +1007,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     ]);
   }
 
-  if (hasExcellentEssayFoundation && (processed.nota_final ?? 0) < 920) {
+  if (hasTopTierFoundation && (processed.nota_final ?? 0) < 920) {
     raiseFinalScoreToMinimum(processed, 920, [
       "competencia_2",
       "competencia_3",
@@ -1055,6 +1069,22 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   recalculateFinalScore(processed);
+
+  if (
+    canReachMaximumScore &&
+    finalCompetencyTwoDiagnosisCap === null &&
+    finalCompetencyThreeDiagnosisCap === null &&
+    competencyFiveDiagnosisCap === null &&
+    (processed.nota_final ?? 0) < 920
+  ) {
+    raiseFinalScoreToMinimum(processed, 920, [
+      "competencia_2",
+      "competencia_3",
+      "competencia_5",
+      "competencia_4",
+      "competencia_1",
+    ]);
+  }
 
   if (process.env.NODE_ENV !== "production") {
     console.info("postProcessEvaluation debug", {
@@ -1665,7 +1695,7 @@ FAIXAS DE REFERÊNCIA:
 DEFINIÇÃO DE QUALIDADE:
 - redação boa (800–880): possui estrutura completa, argumentação clara e repertório pertinente, mesmo que não muito aprofundado;
 - redação muito boa (880–920): apresenta repertório produtivo, argumentação consistente e proposta de intervenção válida, mesmo com pequenas falhas;
-- redação excelente (920–1000): apresenta alto nível de aprofundamento, repertório bem integrado e proposta detalhada.
+- redação excelente (920–1000): apresenta repertório bem integrado, argumentação consistente, boa coesão e proposta de intervenção completa, mesmo que haja pequenas limitações pontuais;
 
 CALIBRAÇÃO:
 - texto genérico tende a ficar em 500–680, salvo se houver estrutura e algum desenvolvimento relevante;
@@ -1673,7 +1703,7 @@ CALIBRAÇÃO:
 - repertório só vale quando é pertinente, explicado e integrado ao argumento;
 - repertório filosófico, histórico, literário, musical ou jurídico pode sustentar nota alta mesmo sem dados estatísticos, desde que esteja bem articulado ao tema;
 - argumentação forte exige desenvolvimento real de causas, consequências, mecanismos e impactos;
-- proposta de intervenção forte exige agente, ação, meio/modo, finalidade e detalhamento;
+- proposta de intervenção forte exige agente, ação, meio/modo e finalidade; maior detalhamento pode elevar ainda mais a avaliação, mas pequenas limitações não impedem nota alta;
 - redações excelentes devem poder receber 920–1000 quando houver qualidade real de repertório, argumentação, coesão e intervenção;
 - não exija perfeição para notas acima de 880;
 - pequenas falhas não devem derrubar uma redação boa ou muito boa para faixas muito baixas;
@@ -1694,9 +1724,9 @@ ORIENTAÇÕES DE RIGOR:
 - coesão apenas funcional, repetitiva ou mecânica tende a ficar no máximo em 160 na Competência 4;
 - proposta válida com agente e ação já pode sustentar 160 na Competência 5; maior detalhamento pode elevar ainda mais a nota;
 - proposta genérica tende a ficar no máximo em 160 na Competência 5;
-- nota 200 em qualquer competência exige desempenho muito consistente e bem desenvolvido;
+- nota 200 em qualquer competência exige critério plenamente atendido e desempenho muito consistente; não exija perfeição absoluta ou sofisticação extrema quando a competência já estiver bem resolvida;
 - uma limitação pontual não deve derrubar drasticamente a nota global se o conjunto da redação for forte;
-- antes de atribuir nota final acima de 920, confirme repertório produtivo, argumentação consistente, boa coesão, intervenção detalhada e domínio linguístico sólido.
+- antes de atribuir nota final acima de 920, confirme repertório produtivo, argumentação consistente, boa coesão, intervenção completa e domínio linguístico sólido, sem exigir perfeição absoluta em todos os aspectos.
 - se a redação tiver estrutura completa, repertório pertinente, argumentação clara e proposta de intervenção válida, não a classifique como fraca e não atribua nota abaixo de 800.
 
 SUGESTÕES DE REESCRITA:
