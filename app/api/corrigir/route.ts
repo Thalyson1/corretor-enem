@@ -450,9 +450,7 @@ function analyzeEssaySignals(text: string) {
       strongRepertoireCount >= 1 ||
       concreteDataCount >= 2 ||
       productiveRepertoireCount >= 1 ||
-      (detectedRepertoireCount >= 2 &&
-        explanationMarkerCount >= 3 &&
-        genericRepertoireCount === 0),
+      (detectedRepertoireCount >= 1 && explanationMarkerCount >= 3),
     hasPertinentRepertoire:
       strongRepertoireCount >= 1 ||
       concreteDataCount >= 1 ||
@@ -478,11 +476,10 @@ function analyzeEssaySignals(text: string) {
     hasOnlyFunctionalCohesion:
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
     hasRelevantRepertoire:
-      genericRepertoireCount === 0 &&
-      (strongRepertoireCount >= 1 ||
-        concreteDataCount >= 1 ||
-        detectedRepertoireCount >= 1 ||
-        productiveRepertoireCount >= 1),
+      detectedRepertoireCount >= 1 ||
+      productiveRepertoireCount >= 1 ||
+      strongRepertoireCount >= 1 ||
+      concreteDataCount >= 1,
     hasDecorativeRepertoire:
       (repertoireReferenceCount >= 1 || detectedRepertoireCount >= 1) &&
       strongRepertoireCount === 0 &&
@@ -580,13 +577,14 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     (signals.isExceptionalEssay ||
       (signals.hasExceptionalLanguage &&
         (signals.hasExceptionalArgumentation || signals.hasExceptionalCohesion)));
+  const hasSolidIntermediateFoundation =
+    signals.hasCompleteEssayStructure &&
+    signals.hasBasicCohesion &&
+    signals.hasCompleteIntervention &&
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention;
   const canReachMaximumScore =
-    hasExcellentEssayFoundation ||
-    (signals.hasStrongRepertoire &&
-      signals.hasDevelopedArgumentation &&
-      signals.hasCompleteIntervention &&
-      !signals.hasGenericArgumentation &&
-      !signals.hasGenericIntervention);
+    hasHighQualityFoundation || hasExcellentEssayFoundation;
   const isVeryWeakEssay =
     !signals.hasBasicEssayStructure ||
     (signals.hasLowDensity &&
@@ -1028,7 +1026,54 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       160,
       "C5 protegida: proposta com intervenção completa e não genérica não deve ficar abaixo de 160.",
     );
+    if (signals.hasDetailedIntervention && beforeScores.nota_final >= 880) {
+      ensureMinimumCompetenceScore(
+        "competencia_5",
+        200,
+        "C5 reforçada: intervenção detalhada em redação forte pode sustentar faixa máxima nessa competência.",
+      );
+    }
     recalculateFinalScore(processed);
+  }
+
+  if (
+    hasSolidIntermediateFoundation &&
+    !signals.hasLowDensity &&
+    !isVeryWeakEssay &&
+    (processed.nota_final ?? 0) < 600
+  ) {
+    raiseFinalScoreToMinimumTracked(
+      600,
+      [
+        "competencia_5",
+        "competencia_4",
+        "competencia_3",
+        "competencia_2",
+        "competencia_1",
+      ],
+      "Proteção intermediária aplicada.",
+    );
+  }
+
+  if (
+    hasSolidIntermediateFoundation &&
+    !signals.hasLowDensity &&
+    !isVeryWeakEssay &&
+    (signals.hasRelevantRepertoire || signals.hasStrongRepertoire) &&
+    signals.hasDevelopedArgumentation &&
+    (processed.nota_final ?? 0) < 640
+  ) {
+    raiseFinalScoreToMinimumTracked(
+      640,
+      [
+        "competencia_2",
+        "competencia_3",
+        "competencia_5",
+        "competencia_4",
+        "competencia_1",
+      ],
+      "Proteção intermediária aplicada.",
+    );
   }
 
   if (
@@ -1103,6 +1148,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       keySignals: {
         hasHighQualityFoundation,
         hasExcellentEssayFoundation,
+        hasSolidIntermediateFoundation,
         canReachMaximumScore,
         hasDetectedRepertoire: signals.hasDetectedRepertoire,
         hasProductiveRepertoire: signals.hasProductiveRepertoire,
