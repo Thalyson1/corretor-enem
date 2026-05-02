@@ -366,6 +366,16 @@ function analyzeEssaySignals(text: string) {
     /gabriel o pensador/g,
     /john locke/g,
     /hans jonas/g,
+    /ailton krenak/g,
+    /marilena chaui/g,
+    /honwana/g,
+    /luis bernardo honwana/g,
+    /frantz fanon/g,
+    /kabengele munanga/g,
+    /achille mbembe/g,
+    /simone de beauvoir/g,
+    /judith butler/g,
+    /boaventura de sousa santos/g,
     /constituicao federal/g,
     /codigo penal/g,
     /estatuto da crianca e do adolescente/g,
@@ -602,6 +612,16 @@ function classifyEssayLevel(
 
   if (options.canReachMaximumScore && !options.hasNegativeDiagnosisCaps) {
     return "excelente";
+  }
+
+  if (
+    signals.hasDevelopedArgumentation &&
+    signals.hasCriticalAnalysis &&
+    signals.hasRefinedProgression &&
+    signals.hasCompleteIntervention &&
+    (signals.hasStrongRepertoire || signals.hasRelevantRepertoire)
+  ) {
+    return options.hasExcellentEssayFoundation ? "muito_boa" : "boa";
   }
 
   if (
@@ -1018,7 +1038,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
-  if (signals.hasCompleteIntervention && !signals.hasGenericIntervention) {
+  if (
+    signals.hasCompleteIntervention &&
+    signals.hasDetailedIntervention &&
+    !signals.hasGenericIntervention
+  ) {
     const competenceFive = processed.competencia_5;
     if (competenceFive && competenceFive.nota < 160) {
       competenceFive.nota = normalizeScore(160);
@@ -1181,6 +1205,19 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       920,
       ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
       "Piso de excelência aplicado porque os sinais de fundação excelente foram confirmados, impedindo que a nota final fique abaixo da faixa esperada.",
+    );
+  }
+
+  if (
+    signals.hasStrongRepertoire &&
+    signals.hasDevelopedArgumentation &&
+    signals.hasCompleteIntervention &&
+    (processed.nota_final ?? 0) < 880
+  ) {
+    applyTrackedMinimumScore(
+      880,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Piso de alto nível aplicado porque a redação apresentou repertório forte, argumentação desenvolvida e intervenção completa, o que impede nota inferior a 880.",
     );
   }
 
