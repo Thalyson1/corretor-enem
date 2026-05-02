@@ -366,10 +366,17 @@ function analyzeEssaySignals(text: string) {
     /gabriel o pensador/g,
     /john locke/g,
     /hans jonas/g,
+    /norberto bobbio/g,
+    /bobbio/g,
+    /karl marx/g,
+    /marx/g,
+    /graciliano ramos/g,
     /ailton krenak/g,
     /marilena chaui/g,
     /honwana/g,
     /luis bernardo honwana/g,
+    /josue de castro/g,
+    /byung-chul han/g,
     /frantz fanon/g,
     /kabengele munanga/g,
     /achille mbembe/g,
@@ -489,6 +496,10 @@ function analyzeEssaySignals(text: string) {
       concreteDataCount >= 2 ||
       (repertoireReferenceCount >= 2 &&
         explanationMarkerCount >= 3 &&
+        genericRepertoireCount === 0 &&
+        genericArgumentCount <= 1) ||
+      (repertoireReferenceCount >= 2 &&
+        explanationMarkerCount >= 3 &&
         genericRepertoireCount === 0),
     hasPertinentRepertoire:
       strongRepertoireCount >= 1 ||
@@ -521,7 +532,9 @@ function analyzeEssaySignals(text: string) {
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
     hasRelevantRepertoire:
       genericRepertoireCount === 0 &&
-      (strongRepertoireCount >= 1 || concreteDataCount >= 1),
+      (strongRepertoireCount >= 1 ||
+        concreteDataCount >= 1 ||
+        (repertoireReferenceCount >= 2 && explanationMarkerCount >= 3)),
     hasDecorativeRepertoire:
       repertoireReferenceCount >= 1 &&
       strongRepertoireCount === 0 &&
@@ -626,6 +639,19 @@ function classifyEssayLevel(
     return options.hasExcellentEssayFoundation || signals.hasDetailedIntervention
       ? "muito_boa"
       : "boa";
+  }
+
+  if (
+    signals.hasConsistentArgumentation &&
+    signals.hasDevelopedArgumentation &&
+    signals.hasCriticalAnalysis &&
+    signals.hasRefinedProgression &&
+    signals.hasCompleteIntervention &&
+    signals.hasDetailedIntervention &&
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention
+  ) {
+    return "muito_boa";
   }
 
   if (
@@ -1277,6 +1303,34 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       920,
       ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
       "Piso de excelência aplicado porque os sinais de fundação excelente foram confirmados, impedindo que a nota final fique abaixo da faixa esperada.",
+    );
+  }
+
+  if (
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention &&
+    !signals.hasLowDensity &&
+    essayLevel === "muito_boa" &&
+    (processed.nota_final ?? 0) < 880
+  ) {
+    applyTrackedMinimumScore(
+      880,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Boost seguro aplicado porque a redação foi classificada como muito boa sem sinais de genericidade ou baixa densidade.",
+    );
+  }
+
+  if (
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention &&
+    !signals.hasLowDensity &&
+    (essayLevel === "excelente" || canReachMaximumScore) &&
+    (processed.nota_final ?? 0) < 920
+  ) {
+    applyTrackedMinimumScore(
+      920,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Boost seguro aplicado porque a redação atingiu nível excelente ou condição de nota máxima sem sinais de genericidade ou baixa densidade.",
     );
   }
 
