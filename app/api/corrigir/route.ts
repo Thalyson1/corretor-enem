@@ -793,6 +793,11 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
 
     const hasPositiveInterventionDiagnosis =
+      diagnosticText.includes("proposta de intervencao e completa") ||
+      diagnosticText.includes("proposta e completa") ||
+      diagnosticText.includes("apresenta agente") ||
+      diagnosticText.includes("apresenta acao") ||
+      diagnosticText.includes("apresenta meio") ||
       diagnosticText.includes("completa") ||
       diagnosticText.includes("valida") ||
       diagnosticText.includes("detalhada") ||
@@ -1042,7 +1047,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   if (
     getPenaltyCountSafe(processed) < 2 &&
-    (signals.hasOnlyFunctionalCohesion || signals.hasRepetitionProblem)
+    (signals.hasOnlyFunctionalCohesion || signals.hasRepetitionProblem) &&
+    !(
+      (beforeScores.nota_final ?? 0) >= 840 &&
+      !signals.hasGenericArgumentation &&
+      !signals.hasLowDensity
+    )
   ) {
     applyTrackedPenalty(
       "competencia_4",
@@ -1125,7 +1135,6 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
   if (
     signals.hasCompleteIntervention &&
-    signals.hasDetailedIntervention &&
     !signals.hasGenericIntervention
   ) {
     const competenceFive = processed.competencia_5;
@@ -1133,13 +1142,24 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       `${competenceFive?.justificativa ?? ""} ${competenceFive?.melhoria ?? ""}`,
     );
     const hasPositiveInterventionDiagnosis =
+      competenceFiveDiagnosis.includes("proposta de intervencao e completa") ||
+      competenceFiveDiagnosis.includes("proposta e completa") ||
+      competenceFiveDiagnosis.includes("apresenta agente") ||
+      competenceFiveDiagnosis.includes("apresenta acao") ||
+      competenceFiveDiagnosis.includes("apresenta meio") ||
       competenceFiveDiagnosis.includes("completa") ||
+      competenceFiveDiagnosis.includes("valida") ||
       competenceFiveDiagnosis.includes("detalhada") ||
       competenceFiveDiagnosis.includes("detalhado") ||
-      competenceFiveDiagnosis.includes("atende plenamente");
+      competenceFiveDiagnosis.includes("atende plenamente") ||
+      competenceFiveDiagnosis.includes("finalidade");
 
     if (competenceFive) {
-      if (hasPositiveInterventionDiagnosis && competenceFive.nota < 200) {
+      if (
+        hasPositiveInterventionDiagnosis &&
+        signals.hasDetailedIntervention &&
+        competenceFive.nota < 200
+      ) {
         competenceFive.nota = normalizeScore(200);
       } else if (competenceFive.nota < 160) {
         competenceFive.nota = normalizeScore(160);
@@ -1299,6 +1319,15 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     canReachMaximumScore,
     hasNegativeDiagnosisCaps,
   });
+  const shouldProtectStrongEssay =
+    (beforeScores.nota_final ?? 0) >= 840 &&
+    signals.hasStrongRepertoire &&
+    signals.hasRelevantRepertoire &&
+    signals.hasCompleteIntervention &&
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention &&
+    !signals.hasLowDensity &&
+    signals.hasBasicEssayStructure;
   const shouldProtectHighRawScore =
     (beforeScores.nota_final ?? 0) >= 880 &&
     signals.hasStrongRepertoire &&
@@ -1308,6 +1337,28 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     !signals.hasGenericIntervention &&
     !signals.hasLowDensity &&
     signals.hasBasicEssayStructure;
+
+  if (shouldProtectStrongEssay && (processed.nota_final ?? 0) < 840) {
+    applyTrackedMinimumScore(
+      840,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Proteção de redação forte aplicada porque a nota bruta veio em 840 ou mais e os sinais estruturais confirmam alta qualidade sem genericidade.",
+    );
+  }
+
+  if (
+    shouldProtectStrongEssay &&
+    (signals.hasConsistentArgumentation ||
+      signals.hasDevelopedArgumentation ||
+      signals.hasCriticalAnalysis) &&
+    (processed.nota_final ?? 0) < 880
+  ) {
+    applyTrackedMinimumScore(
+      880,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Proteção reforçada de redação forte aplicada porque, além dos sinais estruturais, a argumentação demonstrou consistência, desenvolvimento ou análise crítica.",
+    );
+  }
 
   if (shouldProtectHighRawScore && (processed.nota_final ?? 0) < 880) {
     applyTrackedMinimumScore(
