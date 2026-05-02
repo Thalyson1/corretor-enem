@@ -405,10 +405,37 @@ function analyzeEssaySignals(text: string) {
     /\bsegundo\b/g,
     /\bde acordo com\b/g,
     /\bconforme\b/g,
+    /\bno filme\b/g,
+    /\bna obra\b/g,
+    /\bo livro\b/g,
     /\bfilosofo\b/g,
     /\bsociologo\b/g,
     /\bescritor\b/g,
+    /\bcientista politico\b/g,
+    /\bteoria\b/g,
+    /\bconceito de\b/g,
     /\bautor\b/g,
+    /\bconstituicao\b/g,
+    /\blei\b/g,
+  ]);
+
+  const detectedRepertoireCount = countOccurrences(normalized, [
+    /\bsegundo\b/g,
+    /\bde acordo com\b/g,
+    /\bconforme\b/g,
+    /\bno filme\b/g,
+    /\bna obra\b/g,
+    /\bo livro\b/g,
+    /\bo filosofo\b/g,
+    /\ba filosofa\b/g,
+    /\bo sociologo\b/g,
+    /\ba sociologa\b/g,
+    /\bo escritor\b/g,
+    /\ba escritora\b/g,
+    /\bo cientista politico\b/g,
+    /\ba cientista politica\b/g,
+    /\ba teoria\b/g,
+    /\bo conceito de\b/g,
     /\bconstituicao\b/g,
     /\blei\b/g,
   ]);
@@ -491,21 +518,25 @@ function analyzeEssaySignals(text: string) {
   return {
     hasConcreteSupport: concreteDataCount >= 1,
     hasConcreteData: concreteDataCount >= 2,
+    hasDetectedRepertoire:
+      detectedRepertoireCount >= 1 ||
+      repertoireReferenceCount >= 1 ||
+      strongRepertoireCount >= 1,
+    hasProductiveRepertoire:
+      (detectedRepertoireCount >= 1 || repertoireReferenceCount >= 1 || strongRepertoireCount >= 1) &&
+      explanationMarkerCount >= 3 &&
+      genericRepertoireCount === 0,
     hasStrongRepertoire:
       strongRepertoireCount >= 1 ||
       concreteDataCount >= 2 ||
-      (repertoireReferenceCount >= 2 &&
-        explanationMarkerCount >= 3 &&
-        genericRepertoireCount === 0 &&
-        genericArgumentCount <= 1) ||
-      (repertoireReferenceCount >= 2 &&
-        explanationMarkerCount >= 3 &&
-        genericRepertoireCount === 0),
+      ((detectedRepertoireCount >= 1 || repertoireReferenceCount >= 1) &&
+        explanationMarkerCount >= 3),
     hasPertinentRepertoire:
       strongRepertoireCount >= 1 ||
       concreteDataCount >= 1 ||
       genericRepertoireCount >= 1 ||
-      repertoireReferenceCount >= 1,
+      repertoireReferenceCount >= 1 ||
+      detectedRepertoireCount >= 1,
     hasGenericRepertoire: genericRepertoireCount >= 2,
     hasGenericArgumentation: genericArgumentCount >= 3,
     hasSophisticatedLanguage:
@@ -531,12 +562,13 @@ function analyzeEssaySignals(text: string) {
     hasOnlyFunctionalCohesion:
       connectorCount >= 2 && connectorCount < 4 && repetitionCount >= 2,
     hasRelevantRepertoire:
-      genericRepertoireCount === 0 &&
-      (strongRepertoireCount >= 1 ||
-        concreteDataCount >= 1 ||
-        (repertoireReferenceCount >= 2 && explanationMarkerCount >= 3)),
+      detectedRepertoireCount >= 1 ||
+      ((detectedRepertoireCount >= 1 || repertoireReferenceCount >= 1 || strongRepertoireCount >= 1) &&
+        explanationMarkerCount >= 3) ||
+      strongRepertoireCount >= 1 ||
+      concreteDataCount >= 1,
     hasDecorativeRepertoire:
-      repertoireReferenceCount >= 1 &&
+      (repertoireReferenceCount >= 1 || detectedRepertoireCount >= 1) &&
       strongRepertoireCount === 0 &&
       concreteDataCount === 0 &&
       explanationMarkerCount <= 2,
@@ -553,6 +585,7 @@ function analyzeEssaySignals(text: string) {
       concreteDataCount === 0,
     hasLowDensity:
       strongRepertoireCount === 0 &&
+      detectedRepertoireCount === 0 &&
       concreteDataCount === 0 &&
       genericArgumentCount >= 2 &&
       explanationMarkerCount <= 2,
@@ -583,6 +616,9 @@ function analyzeEssaySignals(text: string) {
       interventionIntentCount >= 1 &&
       (strongRepertoireCount >= 1 ||
         concreteDataCount >= 1 ||
+        (detectedRepertoireCount >= 1 &&
+          explanationMarkerCount >= 3 &&
+          genericRepertoireCount === 0) ||
         (repertoireReferenceCount >= 1 &&
           explanationMarkerCount >= 3 &&
           genericRepertoireCount === 0)) &&
@@ -702,7 +738,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }> = [];
   const hasHighQualityFoundation =
     signals.hasCompleteEssayStructure &&
-    (signals.hasStrongRepertoire || signals.hasConcreteSupport) &&
+    (
+      signals.hasStrongRepertoire ||
+      signals.hasProductiveRepertoire ||
+      signals.hasRelevantRepertoire ||
+      signals.hasConcreteSupport
+    ) &&
     signals.hasDevelopedArgumentation &&
     signals.hasCompleteIntervention &&
     signals.hasGoodCohesion;
@@ -717,15 +758,18 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     hasTopTierFoundation &&
     (signals.isExceptionalEssay ||
       signals.hasStrongRepertoire ||
+      signals.hasProductiveRepertoire ||
       signals.hasDetailedIntervention ||
       signals.hasExceptionalArgumentation ||
       signals.hasExceptionalCohesion ||
       signals.hasExceptionalLanguage);
   const canReachMaximumScore =
-    hasTopTierFoundation &&
-    !signals.hasGenericIntervention &&
-    !signals.hasGenericArgumentation &&
-    !signals.hasGenericRepertoire;
+    hasExcellentEssayFoundation ||
+    (signals.hasStrongRepertoire &&
+      signals.hasDevelopedArgumentation &&
+      signals.hasCompleteIntervention &&
+      !signals.hasGenericArgumentation &&
+      !signals.hasGenericIntervention);
   const getCompetencyTwoCapFromDiagnosis = () => {
     const competence = processed.competencia_2;
     const diagnosticText = normalizeForMatch(
@@ -742,7 +786,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
 
     if (
       hasPositiveRepertoireDiagnosis &&
-      (signals.hasStrongRepertoire || signals.hasRelevantRepertoire || signals.hasPertinentRepertoire)
+      (
+        signals.hasStrongRepertoire ||
+        signals.hasRelevantRepertoire ||
+        signals.hasPertinentRepertoire ||
+        signals.hasProductiveRepertoire
+      )
     ) {
       return null;
     }
@@ -809,9 +858,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       diagnosticText.includes("finalidade");
 
     if (
-      (signals.hasCompleteIntervention &&
-        signals.hasDetailedIntervention &&
-        !signals.hasGenericIntervention) ||
+      (signals.hasCompleteIntervention && !signals.hasGenericIntervention) ||
       hasPositiveInterventionDiagnosis
     ) {
       return null;
@@ -1101,7 +1148,12 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   if (
     competenceTwo &&
     hasPositiveRepertoireDiagnosis &&
-    (signals.hasStrongRepertoire || signals.hasRelevantRepertoire || signals.hasPertinentRepertoire) &&
+    (
+      signals.hasStrongRepertoire ||
+      signals.hasRelevantRepertoire ||
+      signals.hasPertinentRepertoire ||
+      signals.hasProductiveRepertoire
+    ) &&
     competenceTwo.nota < 200
   ) {
     competenceTwo.nota = normalizeScore(200);
@@ -1155,11 +1207,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       competenceFiveDiagnosis.includes("finalidade");
 
     if (competenceFive) {
-      if (
-        hasPositiveInterventionDiagnosis &&
-        signals.hasDetailedIntervention &&
-        competenceFive.nota < 200
-      ) {
+      if (hasPositiveInterventionDiagnosis && signals.hasDetailedIntervention && competenceFive.nota < 200) {
         competenceFive.nota = normalizeScore(200);
       } else if (competenceFive.nota < 160) {
         competenceFive.nota = normalizeScore(160);
@@ -1321,8 +1369,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   });
   const shouldProtectStrongEssay =
     (beforeScores.nota_final ?? 0) >= 840 &&
-    signals.hasStrongRepertoire &&
-    signals.hasRelevantRepertoire &&
+    (signals.hasStrongRepertoire || signals.hasProductiveRepertoire || signals.hasRelevantRepertoire) &&
     signals.hasCompleteIntervention &&
     !signals.hasGenericArgumentation &&
     !signals.hasGenericIntervention &&
@@ -1330,8 +1377,7 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     signals.hasBasicEssayStructure;
   const shouldProtectHighRawScore =
     (beforeScores.nota_final ?? 0) >= 880 &&
-    signals.hasStrongRepertoire &&
-    signals.hasRelevantRepertoire &&
+    (signals.hasStrongRepertoire || signals.hasProductiveRepertoire || signals.hasRelevantRepertoire) &&
     signals.hasCompleteIntervention &&
     !signals.hasGenericArgumentation &&
     !signals.hasGenericIntervention &&
@@ -1572,6 +1618,8 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
       hasExcellentEssayFoundation,
       canReachMaximumScore,
       hasStrongRepertoire: signals.hasStrongRepertoire,
+      hasDetectedRepertoire: signals.hasDetectedRepertoire,
+      hasProductiveRepertoire: signals.hasProductiveRepertoire,
       hasRelevantRepertoire: signals.hasRelevantRepertoire,
       hasConsistentArgumentation: signals.hasConsistentArgumentation,
       hasDevelopedArgumentation: signals.hasDevelopedArgumentation,
