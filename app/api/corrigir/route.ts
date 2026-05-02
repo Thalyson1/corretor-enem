@@ -1288,12 +1288,47 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     finalCompetencyTwoDiagnosisCap !== null ||
     finalCompetencyThreeDiagnosisCap !== null ||
     competencyFiveDiagnosisCap !== null;
+  const negativeCompetencyCount = [
+    finalCompetencyTwoDiagnosisCap,
+    finalCompetencyThreeDiagnosisCap,
+    competencyFiveDiagnosisCap,
+  ].filter((value) => value !== null).length;
   const essayLevel = classifyEssayLevel(signals, {
     hasTopTierFoundation,
     hasExcellentEssayFoundation,
     canReachMaximumScore,
     hasNegativeDiagnosisCaps,
   });
+  const shouldProtectHighRawScore =
+    (beforeScores.nota_final ?? 0) >= 880 &&
+    signals.hasStrongRepertoire &&
+    signals.hasRelevantRepertoire &&
+    signals.hasCompleteIntervention &&
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention &&
+    !signals.hasLowDensity &&
+    signals.hasBasicEssayStructure;
+
+  if (shouldProtectHighRawScore && (processed.nota_final ?? 0) < 880) {
+    applyTrackedMinimumScore(
+      880,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Proteção da nota bruta alta aplicada porque a IA já reconheceu alta qualidade e os sinais estruturais confirmam repertório forte, intervenção completa e ausência de genericidade.",
+    );
+  }
+
+  if (
+    shouldProtectHighRawScore &&
+    (beforeScores.nota_final ?? 0) >= 920 &&
+    negativeCompetencyCount < 2 &&
+    (processed.nota_final ?? 0) < 920
+  ) {
+    applyTrackedMinimumScore(
+      920,
+      ["competencia_2", "competencia_3", "competencia_5", "competencia_4", "competencia_1"],
+      "Proteção reforçada da nota bruta aplicada porque a IA atribuiu 920 ou mais e não houve diagnóstico claramente negativo em múltiplas competências.",
+    );
+  }
 
   if (
     hasExcellentEssayFoundation &&
