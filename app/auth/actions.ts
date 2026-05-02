@@ -66,7 +66,7 @@ export async function signUpAction(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -95,10 +95,13 @@ export async function signUpAction(
     };
   }
 
+  if (data.session) {
+    redirect("/");
+  }
+
   return {
     error: null,
-    success:
-      "Conta criada com sucesso. Se a confirmação por e-mail estiver ativa, verifique sua caixa de entrada antes de entrar.",
+    success: "Conta criada com sucesso. Agora você já pode entrar.",
   };
 }
 
