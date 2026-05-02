@@ -589,6 +589,15 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     (signals.hasDetailedIntervention || signals.hasCompleteIntervention) &&
     !signals.hasSevereDevelopmentIssue;
 
+  const isHighLevelEssay =
+    signals.hasStrongRepertoire &&
+    signals.hasDevelopedArgumentation &&
+    signals.hasCriticalAnalysis &&
+    signals.hasRefinedProgression &&
+    signals.hasCompleteIntervention &&
+    !signals.hasGenericArgumentation &&
+    !signals.hasGenericIntervention;
+
   const hasSolidIntermediateFoundation =
     signals.hasCompleteEssayStructure &&
     signals.hasBasicCohesion &&
@@ -999,6 +1008,21 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
     );
   }
 
+
+  if (false) {
+    const before = processed.nota_final ?? 0;
+    processed.nota_final = Math.max(processed.nota_final ?? 0, 920);
+
+    if ((processed.nota_final ?? 0) > before) {
+      boostsApplied.push({
+        competencia: "nota_final",
+        from: before,
+        to: processed.nota_final ?? 0,
+        reason: "Elevação para faixa excelente por alta qualidade estrutural",
+      });
+    }
+  }
+
   recalculateFinalScore(processed);
 
   // Travas anti-inflação finais.
@@ -1067,6 +1091,28 @@ function postProcessEvaluation(result: CorrectionResult, essayText: string) {
   }
 
   recalculateFinalScore(processed);
+
+  if (
+    isHighLevelEssay &&
+    !signals.hasLowDensity &&
+    !signals.hasSuperficialDevelopment &&
+    !essayLooksIncomplete &&
+    !isVeryWeakEssay &&
+    (processed.nota_final ?? 0) >= 800 &&
+    (processed.nota_final ?? 0) < 900
+  ) {
+    const before = processed.nota_final ?? 0;
+    processed.nota_final = Math.max(processed.nota_final ?? 0, 920);
+
+    if ((processed.nota_final ?? 0) > before) {
+      boostsApplied.push({
+        competencia: "nota_final",
+        from: before,
+        to: processed.nota_final ?? 0,
+        reason: "Elevação para faixa excelente por alta qualidade estrutural",
+      });
+    }
+  }
 
   if (!processed.resumo_geral) {
     processed.resumo_geral =
