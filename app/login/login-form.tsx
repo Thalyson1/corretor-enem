@@ -173,6 +173,13 @@ export function LoginForm({ status }: LoginFormProps) {
                 Ao escolher nenhuma escola, a turma é marcada automaticamente como nenhuma turma.
               </p>
             ) : null}
+            {schoolHasNoClassGroup ? (
+              <input
+                type="hidden"
+                name="class_group"
+                value={NO_CLASS_GROUP_OPTION}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}
