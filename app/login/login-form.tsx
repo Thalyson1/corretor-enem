@@ -11,6 +11,21 @@ type LoginFormProps = {
   status?: string;
 };
 
+const SCHOOL_OPTIONS = ["ECIT Dr. Silva Mariz", "Outra Escola"] as const;
+
+const CLASS_GROUP_OPTIONS = [
+  "1° A",
+  "1° B",
+  "1° C",
+  "2° A",
+  "2° B",
+  "2° C",
+  "3° A",
+  "3° B",
+  "3° C",
+  "Nenhuma turma / não sou aluno",
+] as const;
+
 function getStatusMessage(status?: string) {
   if (status === "inactive") {
     return "Sua conta está inativa no momento. Fale com a coordenação ou com o professor responsável.";
@@ -88,15 +103,22 @@ export function LoginForm({ status }: LoginFormProps) {
             >
               Escola
             </label>
-            <input
+            <select
               id="school_name"
               name="school_name"
-              type="text"
-              autoComplete="organization"
               required
+              defaultValue=""
               className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-              placeholder="Nome da escola"
-            />
+            >
+              <option value="" disabled>
+                Selecione a escola
+              </option>
+              {SCHOOL_OPTIONS.map((schoolOption) => (
+                <option key={schoolOption} value={schoolOption}>
+                  {schoolOption}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="space-y-2">
@@ -106,21 +128,31 @@ export function LoginForm({ status }: LoginFormProps) {
             >
               Turma
             </label>
-            <input
+            <select
               id="class_group"
               name="class_group"
-              type="text"
-              autoComplete="off"
               required
+              defaultValue=""
               className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-              placeholder="Ex.: 3º Ano A"
-            />
+            >
+              <option value="" disabled>
+                Selecione a turma
+              </option>
+              {CLASS_GROUP_OPTIONS.map((classGroupOption) => (
+                <option key={classGroupOption} value={classGroupOption}>
+                  {classGroupOption}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       ) : null}
 
       <div className="space-y-2">
-        <label htmlFor="email" className="block text-sm font-semibold text-slate-800">
+        <label
+          htmlFor="email"
+          className="block text-sm font-semibold text-slate-800"
+        >
           E-mail
         </label>
         <input
