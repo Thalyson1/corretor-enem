@@ -11,7 +11,14 @@ type LoginFormProps = {
   status?: string;
 };
 
-const SCHOOL_OPTIONS = ["ECIT Dr. Silva Mariz", "Outra Escola"] as const;
+const NO_SCHOOL_OPTION = "Nenhuma escola / não sou aluno";
+const NO_CLASS_GROUP_OPTION = "Nenhuma turma / não sou aluno";
+
+const SCHOOL_OPTIONS = [
+  "ECIT Dr. Silva Mariz",
+  "Outra Escola",
+  NO_SCHOOL_OPTION,
+] as const;
 
 const CLASS_GROUP_OPTIONS = [
   "1° A",
@@ -23,7 +30,7 @@ const CLASS_GROUP_OPTIONS = [
   "3° A",
   "3° B",
   "3° C",
-  "Nenhuma turma / não sou aluno",
+  NO_CLASS_GROUP_OPTION,
 ] as const;
 
 function getStatusMessage(status?: string) {
@@ -36,6 +43,8 @@ function getStatusMessage(status?: string) {
 
 export function LoginForm({ status }: LoginFormProps) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [selectedSchool, setSelectedSchool] = useState("");
+  const [selectedClassGroup, setSelectedClassGroup] = useState("");
   const [signInState, signInFormAction, signInPending] = useActionState<
     AuthFormState,
     FormData
@@ -48,6 +57,18 @@ export function LoginForm({ status }: LoginFormProps) {
   const state = mode === "signin" ? signInState : signUpState;
   const formAction = mode === "signin" ? signInFormAction : signUpFormAction;
   const pending = mode === "signin" ? signInPending : signUpPending;
+  const schoolHasNoClassGroup = selectedSchool === NO_SCHOOL_OPTION;
+
+  function handleSchoolChange(nextSchool: string) {
+    setSelectedSchool(nextSchool);
+
+    if (nextSchool === NO_SCHOOL_OPTION) {
+      setSelectedClassGroup(NO_CLASS_GROUP_OPTION);
+      return;
+    }
+
+    setSelectedClassGroup("");
+  }
 
   return (
     <form action={formAction} className="space-y-5">
@@ -107,7 +128,8 @@ export function LoginForm({ status }: LoginFormProps) {
               id="school_name"
               name="school_name"
               required
-              defaultValue=""
+              value={selectedSchool}
+              onChange={(event) => handleSchoolChange(event.target.value)}
               className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
             >
               <option value="" disabled>
@@ -132,8 +154,10 @@ export function LoginForm({ status }: LoginFormProps) {
               id="class_group"
               name="class_group"
               required
-              defaultValue=""
-              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              value={selectedClassGroup}
+              onChange={(event) => setSelectedClassGroup(event.target.value)}
+              disabled={schoolHasNoClassGroup}
+              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
             >
               <option value="" disabled>
                 Selecione a turma
@@ -144,6 +168,11 @@ export function LoginForm({ status }: LoginFormProps) {
                 </option>
               ))}
             </select>
+            {schoolHasNoClassGroup ? (
+              <p className="text-xs text-slate-500">
+                Ao escolher nenhuma escola, a turma é marcada automaticamente como nenhuma turma.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
