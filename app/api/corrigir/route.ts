@@ -56,7 +56,7 @@ function getQuotaErrorMessage(role: UserProfile["role"]) {
   }
 
   if (role === "teacher") {
-    return "A conta da professora atingiu o limite semanal configurado para correções.";
+    return "A conta do professor atingiu o limite semanal configurado para correções.";
   }
 
   return "A conta atual atingiu o limite semanal configurado.";

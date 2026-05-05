@@ -67,7 +67,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </h2>
             <p className="text-sm leading-6 text-slate-600">
               Cada novo cadastro entra como estudante por padrão. Depois, se
-              necessário, a escola pode promover a conta para professora ou admin.
+              necessário, a escola pode promover a conta para professor ou admin.
             </p>
           </div>
 

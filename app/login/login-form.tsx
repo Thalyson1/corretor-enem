@@ -13,7 +13,7 @@ type LoginFormProps = {
 
 function getStatusMessage(status?: string) {
   if (status === "inactive") {
-    return "Sua conta está inativa no momento. Fale com a coordenação ou com a professora responsável.";
+    return "Sua conta está inativa no momento. Fale com a coordenação ou com o professor responsável.";
   }
 
   return null;

@@ -46,7 +46,7 @@ export default async function TeacherPage({ searchParams }: TeacherPageProps) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-300">
-                Painel da professora
+                Painel do professor
               </div>
               <h1 className="mt-2 text-4xl font-black tracking-tight">
                 Turmas, progresso e redações recentes
