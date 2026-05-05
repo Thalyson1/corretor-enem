@@ -10,6 +10,10 @@ function getSignUpErrorMessage(error: {
   status?: number;
   message: string;
 }) {
+  if (error.code === "email_address_invalid") {
+    return "O e-mail informado foi recusado pelo provedor de autenticação como inválido. Tente outro endereço ou revise se não há espaços/caracteres extras.";
+  }
+
   if (error.code === "over_email_send_rate_limit" || error.status === 429) {
     return "O projeto atingiu o limite de envios de e-mail do cadastro. Aguarde alguns minutos e tente de novo. Se o problema continuar, peça para a escola liberar sua conta.";
   }
@@ -25,7 +29,7 @@ export async function signInAction(
   _prevState: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
-  const email = String(formData.get("email") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
   if (!email || !password) {
@@ -63,7 +67,7 @@ export async function signUpAction(
   formData: FormData,
 ): Promise<AuthFormState> {
   const fullName = String(formData.get("full_name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const schoolName = String(formData.get("school_name") ?? "").trim();
   const classGroup = String(formData.get("class_group") ?? "").trim();
   const password = String(formData.get("password") ?? "");
