@@ -1,9 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import type { AuthFormState } from "@/app/auth/form-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type { AuthFormState } from "@/app/auth/form-state";
 
 function getSignUpErrorMessage(error: {
   code?: string;
@@ -88,7 +88,6 @@ export async function signUpAction(
     class_group: classGroup,
   };
   const supabase = await createClient();
-<<<<<<< HEAD
   const adminSupabase = createAdminClient();
 
   if (adminSupabase) {
@@ -138,8 +137,6 @@ export async function signUpAction(
     redirect("/");
   }
 
-=======
->>>>>>> 431a316e15c21a0777dc62ff38666b62684cd681
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -182,12 +179,8 @@ export async function signUpAction(
 
   return {
     error: null,
-<<<<<<< HEAD
     success:
       "Conta criada com sucesso. Se a confirmação por e-mail estiver ativa no projeto, verifique sua caixa de entrada antes de entrar.",
-=======
-    success: "Conta criada com sucesso. Agora você já pode entrar.",
->>>>>>> 431a316e15c21a0777dc62ff38666b62684cd681
   };
 }
 
